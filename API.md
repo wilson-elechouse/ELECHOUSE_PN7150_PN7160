@@ -2,6 +2,8 @@
 
 The `Electroniccats_PN7150` class enables Arduino library for I2C access to the PN7150 and PN7160 RFID/Near Field Communication chips.
 
+For **ELECHOUSE PN7160** and **ELECHOUSE PN7161 NFC RFID Module-I2C** users, use the `PN7160` chip model in the constructor. PN7161 is supported through the PN7160-compatible code path in this library.
+
 ## Class: `Electroniccats_PN7150`
 
 Include and instantiate the `Electroniccats_PN7150` class. Creates a global NFC device interface object, specifying the chip model (PN7150 or PN7160), attached to designated pins for IRQ and VEN, and using the default I2C address 0x28.
