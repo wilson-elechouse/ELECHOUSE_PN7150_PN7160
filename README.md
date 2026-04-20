@@ -85,6 +85,7 @@ Electroniccats_PN7150 nfc(PN7160_IRQ, PN7160_VEN, PN7160_ADDR, PN7160);
 - `examples/ISO15693_read_block` - read ISO15693 blocks
 - `examples/ISO15693_write_block` - write ISO15693 blocks
 - `examples/P2P_Discovery` - peer-to-peer discovery demo
+- `examples/PN7160_testing` - ESP32-oriented PN7160 smoke test with LED activity while a tag is present
 
 ## Notes for ELECHOUSE Users
 
