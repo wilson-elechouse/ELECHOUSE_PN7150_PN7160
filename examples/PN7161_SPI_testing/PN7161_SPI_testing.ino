@@ -1,65 +1,63 @@
 /**
- * Example detect tags and show their unique ID on PN7160.
- * While a tag is present, the LED blinks on ESP32 boards.
+ * Basic PN7161 SPI reader test for ELECHOUSE PN7161 MINI V1 SPI.
  *
- * Authors:
- *        Salvador Mendoza - @Netxing - salmg.net
- *        For Electronic Cats - electroniccats.com
+ * Default pins target ESP32 Dev Module with VSPI:
+ *   SCK  = GPIO18
+ *   MISO = GPIO19
+ *   MOSI = GPIO23
+ *   SS   = GPIO5
+ * Adjust IRQ/VEN and SPI pins to match your wiring.
  *
- * Adapted for ELECHOUSE PN7160 testing.
+ * PN7161 uses the PN7160-compatible code path in this library.
  */
 
+#include <SPI.h>
 #include "Electroniccats_PN7150.h"
 
-#define PN7160_IRQ (14)
-#define PN7160_VEN (13)
-#define PN7160_ADDR (0x28)
-#define PN7160_FIXED_VBAT_3V3 (1)
-#define LED_PIN (2)
+#define PN7161_IRQ (14)
+#define PN7161_VEN (13)
+#define PN7161_SS (5)
+#define PN7161_SCK (18)
+#define PN7161_MISO (19)
+#define PN7161_MOSI (23)
+#define PN7161_FIXED_VBAT_3V3 (1)
+#define PN7161_SPI_TRACE (1)
+#define PN7161_SPI_VERBOSE_TRACE (0)
+#define PRESENCE_CHECK_INTERVAL_MS (400)
 
-Electroniccats_PN7150 nfc(PN7160_IRQ, PN7160_VEN, PN7160_ADDR, PN7160);
+Electroniccats_PN7150 nfc(PN7161_IRQ, PN7161_VEN, PN7161_SS, PN7161_SCK,
+                          PN7161_MISO, PN7161_MOSI, PN7160, &SPI);
+
+bool tagActive = false;
+unsigned long lastPresenceCheckMs = 0;
 
 String getHexRepresentation(const byte* data, const uint32_t numBytes);
 void displayCardInfo();
 
-volatile bool tagPresent = false;
-
-#if defined(ARDUINO_ARCH_ESP32)
-void blinkTask(void* pvParameters) {
-  const int blinkDelay = 167;
-
-  while (true) {
-    if (tagPresent) {
-      digitalWrite(LED_PIN, HIGH);
-      vTaskDelay(blinkDelay / portTICK_PERIOD_MS);
-      digitalWrite(LED_PIN, LOW);
-      vTaskDelay(blinkDelay / portTICK_PERIOD_MS);
-    } else {
-      digitalWrite(LED_PIN, LOW);
-      vTaskDelay(10 / portTICK_PERIOD_MS);
-    }
-  }
-}
-#endif
-
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   while (!Serial)
     ;
 
-  Serial.println("Detect NFC tags with PN7160");
-  Serial.println("Initializing...");
+  Serial.println("Detect NFC tags with PN7161 over SPI");
 
+#if PN7161_SPI_TRACE
+  nfc.setTracePort(&Serial);
+  nfc.setVerboseTrace(PN7161_SPI_VERBOSE_TRACE);
+  Serial.println("PN7161 SPI event trace enabled");
+#endif
+
+#if PN7161_FIXED_VBAT_3V3
+  nfc.setPn7160FixedVbat3V3(true);
+  Serial.println("PN7161 3V3 mode enabled: official single-rail PMU preset");
+#endif
+
+  Serial.println("Initializing...");
   if (nfc.connectNCI()) {
-    Serial.println("Error while setting up the mode, check connections!");
+    Serial.println("Error while waking PN7161 over SPI");
     while (1)
       ;
   }
-
-#if PN7160_FIXED_VBAT_3V3
-  nfc.setPn7160FixedVbat3V3(true);
-  Serial.println("PN7160 3V3 mode enabled: official single-rail PMU preset");
-#endif
 
   if (nfc.configureSettings()) {
     Serial.println("The Configure Settings failed!");
@@ -75,20 +73,10 @@ void setup() {
 
   nfc.startDiscovery();
   Serial.println("Waiting for a card...");
-
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
-
-#if defined(ARDUINO_ARCH_ESP32)
-  TaskHandle_t blinkTaskHandle;
-  xTaskCreate(blinkTask, "BlinkTask", 2048, NULL, 1, &blinkTaskHandle);
-#endif
 }
 
 void loop() {
-  if (nfc.isTagDetected()) {
-    tagPresent = true;
-
+  if (!tagActive && nfc.isTagDetected()) {
     displayCardInfo();
 
     if (nfc.remoteDevice.hasMoreTags()) {
@@ -96,25 +84,31 @@ void loop() {
       Serial.println("Multiple cards are detected!");
     }
 
+    tagActive = true;
+    lastPresenceCheckMs = millis();
     Serial.println("Remove the card");
-    nfc.waitForTagRemoval();
-    Serial.println("Card removed!");
-
-    tagPresent = false;
-    digitalWrite(LED_PIN, LOW);
   }
 
-  Serial.println("Restarting...");
-  nfc.reset();
-  Serial.println("Waiting for a card...");
-  delay(500);
+  if (tagActive &&
+      (millis() - lastPresenceCheckMs) >= PRESENCE_CHECK_INTERVAL_MS) {
+    lastPresenceCheckMs = millis();
+
+    if (nfc.readerReActivate()) {
+      tagActive = false;
+      Serial.println("Card removed!");
+      nfc.startDiscovery();
+      Serial.println("Waiting for a card...");
+    }
+  }
+
+  delay(20);
 }
 
 String getHexRepresentation(const byte* data, const uint32_t numBytes) {
   String hexString;
 
   if (numBytes == 0) {
-    hexString = "null";
+    return "null";
   }
 
   for (uint32_t szPos = 0; szPos < numBytes; szPos++) {
@@ -155,28 +149,34 @@ void displayCardInfo() {
       case (nfc.tech.PASSIVE_NFCA):
         Serial.println("\tTechnology: NFC-A");
         Serial.print("\tSENS RES = ");
-        Serial.println(getHexRepresentation(nfc.remoteDevice.getSensRes(), nfc.remoteDevice.getSensResLen()));
+        Serial.println(getHexRepresentation(nfc.remoteDevice.getSensRes(),
+                                            nfc.remoteDevice.getSensResLen()));
 
         Serial.print("\tNFC ID = ");
-        Serial.println(getHexRepresentation(nfc.remoteDevice.getNFCID(), nfc.remoteDevice.getNFCIDLen()));
+        Serial.println(getHexRepresentation(nfc.remoteDevice.getNFCID(),
+                                            nfc.remoteDevice.getNFCIDLen()));
 
         Serial.print("\tSEL RES = ");
-        Serial.println(getHexRepresentation(nfc.remoteDevice.getSelRes(), nfc.remoteDevice.getSelResLen()));
+        Serial.println(getHexRepresentation(nfc.remoteDevice.getSelRes(),
+                                            nfc.remoteDevice.getSelResLen()));
         break;
 
       case (nfc.tech.PASSIVE_NFCB):
         Serial.println("\tTechnology: NFC-B");
         Serial.print("\tSENS RES = ");
-        Serial.println(getHexRepresentation(nfc.remoteDevice.getSensRes(), nfc.remoteDevice.getSensResLen()));
+        Serial.println(getHexRepresentation(nfc.remoteDevice.getSensRes(),
+                                            nfc.remoteDevice.getSensResLen()));
 
         Serial.println("\tAttrib RES = ");
-        Serial.println(getHexRepresentation(nfc.remoteDevice.getAttribRes(), nfc.remoteDevice.getAttribResLen()));
+        Serial.println(getHexRepresentation(nfc.remoteDevice.getAttribRes(),
+                                            nfc.remoteDevice.getAttribResLen()));
         break;
 
       case (nfc.tech.PASSIVE_NFCF):
         Serial.println("\tTechnology: NFC-F");
         Serial.print("\tSENS RES = ");
-        Serial.println(getHexRepresentation(nfc.remoteDevice.getSensRes(), nfc.remoteDevice.getSensResLen()));
+        Serial.println(getHexRepresentation(nfc.remoteDevice.getSensRes(),
+                                            nfc.remoteDevice.getSensResLen()));
 
         Serial.print("\tBitrate = ");
         Serial.println((nfc.remoteDevice.getBitRate() == 1) ? "212" : "424");
@@ -185,7 +185,9 @@ void displayCardInfo() {
       case (nfc.tech.PASSIVE_NFCV):
         Serial.println("\tTechnology: NFC-V");
         Serial.print("\tID = ");
-        Serial.println(getHexRepresentation(nfc.remoteDevice.getID(), sizeof(nfc.remoteDevice.getID())));
+        Serial.println(
+            getHexRepresentation(nfc.remoteDevice.getID(),
+                                 sizeof(nfc.remoteDevice.getID())));
 
         Serial.print("\tAFI = ");
         Serial.println(nfc.remoteDevice.getAFI());

@@ -35,8 +35,13 @@
 #else
 #include <Wire.h>
 #endif
+#include <SPI.h>
 
 #define NO_PN7150_RESET_PIN 255
+#define NO_PN71XX_SPI_PIN 255
+#define PN71XX_SPI_CLOCK_HZ 1000000UL
+#define PN71XX_SPI_WRITE_TDD 0x7F
+#define PN71XX_SPI_READ_TDD 0xFF
 /* Following definitions specifies which settings will apply when
  * NxpNci_ConfigureSettings() API is called from the application
  */
@@ -67,6 +72,7 @@
 #define MsgHeaderSize 3
 
 enum ChipModel { PN7150 = 0, PN7160 = 1 };
+enum HostInterface { HostInterface_I2C = 0, HostInterface_SPI = 1 };
 
 /***** Factory Test dedicated APIs
  * *********************************************/
@@ -97,9 +103,17 @@ typedef enum {
 class Electroniccats_PN7150 : public Mode {
 private:
   bool _hasBeenInitialized;
+  bool _pn7160FixedVbat3V3;
+  bool _traceVerbose;
+  uint8_t _rfDiscoveryId;
+  uint8_t _nextRfDiscoveryId;
   uint8_t _IRQpin, _VENpin, _I2Caddress;
+  uint8_t _SSpin, _SCKpin, _MISOpin, _MOSIpin;
   ChipModel _chipModel;
+  HostInterface _hostInterface;
   TwoWire *_wire;
+  SPIClass *_spi;
+  Stream *_tracePort;
   RfIntf_t dummyRfInterface;
   uint8_t rxBuffer[MaxPayloadSize +
                    MsgHeaderSize]; // buffer where we store bytes received until
@@ -114,6 +128,14 @@ private:
   void
   setTimeOut(unsigned long); // set a timeOut for an expected next event, eg
                              // reception of Response after sending a Command
+  void hardwareReset();
+  void eventPrint(const char *message) const;
+  void eventPrintValue(const char *label, uint32_t value) const;
+  void eventPrintBuffer(const char *label, const uint8_t *buffer,
+                        uint8_t length) const;
+  void tracePrint(const char *message) const;
+  void tracePrintValue(const char *label, uint32_t value) const;
+  void traceRemoteDeviceSummary(const char *prefix) const;
   bool isTimeOut() const;
   uint8_t wakeupNCI();
   bool
@@ -123,6 +145,9 @@ private:
 public:
   Electroniccats_PN7150(uint8_t IRQpin, uint8_t VENpin, uint8_t I2Caddress,
                         ChipModel chipModel = PN7150, TwoWire *wire = &Wire);
+  Electroniccats_PN7150(uint8_t IRQpin, uint8_t VENpin, uint8_t SSPin,
+                        uint8_t SCKpin, uint8_t MISOpin, uint8_t MOSIpin,
+                        ChipModel chipModel = PN7160, SPIClass *spi = &SPI);
   uint8_t begin(void);
   RemoteDevice remoteDevice;
   Protocol protocol;
@@ -139,6 +164,9 @@ public:
   int getFirmwareVersion();
   int GetFwVersion(); // Deprecated, use getFirmwareVersion() instead
   ChipModel getChipModel() { return _chipModel; }
+  void setTracePort(Stream *stream);
+  void setVerboseTrace(bool enabled = true);
+  void setPn7160FixedVbat3V3(bool enabled = true);
   uint8_t connectNCI();
   uint8_t
   ConfigMode(uint8_t modeSE); // Deprecated, use configMode(void) instead

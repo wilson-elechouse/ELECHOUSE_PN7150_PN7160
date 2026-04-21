@@ -14,43 +14,33 @@
  * Distributed as-is; no warranty is given.
  */
 
-#include "Electroniccats_PN7150.h"
-#define PN7150_IRQ (11)
-#define PN7150_VEN (13)
-#define PN7150_ADDR (0x28)
+#ifndef PN71XX_USE_SPI
+#define PN71XX_USE_SPI 0
+#endif
 
-Electroniccats_PN7150 nfc(PN7150_IRQ, PN7150_VEN, PN7150_ADDR, PN7150); // creates a global NFC device interface object, attached to pins 7 (IRQ) and 8 (VEN) and using the default I2C address 0x28,specify PN7150 or PN7160 in constructor
+#include "Electroniccats_PN7150.h"
+#include "Electroniccats_PN71xx_ExampleTransport.h"
+
+PN71XX_NFC_INSTANCE(nfc); // switch transport with PN71XX_USE_SPI
 
 // Function prototypes
 String getHexRepresentation(const byte* data, const uint32_t numBytes);
 void displayCardInfo();
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(PN71XX_SERIAL_BAUD);
   while (!Serial)
     ;
   Serial.println("Detect NFC tags with PN7150/60");
+  pn71xxConfigureExampleTransport(nfc);
 
   Serial.println("Initializing...");
-  if (nfc.connectNCI()) {  // Wake up the board
-    Serial.println("Error while setting up the mode, check connections!");
+  uint8_t initStatus = pn71xxInitializeDiscoveryMode(nfc);
+  if (initStatus != PN71XX_EXAMPLE_INIT_OK) {
+    pn71xxPrintInitError(Serial, initStatus);
     while (1)
       ;
   }
-
-  if (nfc.configureSettings()) {
-    Serial.println("The Configure Settings is failed!");
-    while (1)
-      ;
-  }
-
-  // Read/Write mode as default
-  if (nfc.configMode()) {  // Set up the configuration mode
-    Serial.println("The Configure Mode is failed!!");
-    while (1)
-      ;
-  }
-  nfc.startDiscovery();  // NCI Discovery mode
   Serial.println("Waiting for an Card ...");
 }
 

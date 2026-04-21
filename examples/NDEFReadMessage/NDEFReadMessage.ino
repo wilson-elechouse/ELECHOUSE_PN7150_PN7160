@@ -12,10 +12,12 @@
  * Distributed as-is; no warranty is given.
  */
 
+#ifndef PN71XX_USE_SPI
+#define PN71XX_USE_SPI 0
+#endif
+
 #include "Electroniccats_PN7150.h"
-#define PN7150_IRQ (11)
-#define PN7150_VEN (13)
-#define PN7150_ADDR (0x28)
+#include "Electroniccats_PN71xx_ExampleTransport.h"
 
 // Function prototypes
 void messageReceivedCallback();
@@ -23,28 +25,29 @@ String getHexRepresentation(const byte *data, const uint32_t dataSize);
 void displayDeviceInfo();
 void displayRecordInfo(NdefRecord record);
 
-Electroniccats_PN7150 nfc(PN7150_IRQ, PN7150_VEN, PN7150_ADDR, PN7150); // creates a global NFC device interface object, attached to pins 7 (IRQ) and 8 (VEN) and using the default I2C address 0x28,specify PN7150 or PN7160 in constructor
+PN71XX_NFC_INSTANCE(nfc); // switch transport with PN71XX_USE_SPI
 NdefMessage message;
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(PN71XX_SERIAL_BAUD);
   while (!Serial)
     ;
   Serial.println("Detect NFC tags with PN7150/60");
+  pn71xxConfigureExampleTransport(nfc);
 
   // Register a callback function to be called when an NDEF message is received
   nfc.setReadMsgCallback(messageReceivedCallback);
 
   Serial.println("Initializing...");
 
-  if (nfc.begin()) {
-    Serial.println("Error initializing PN7150");
+  uint8_t initStatus = pn71xxInitializeDiscoveryMode(nfc);
+  if (initStatus != PN71XX_EXAMPLE_INIT_OK) {
+    pn71xxPrintInitError(Serial, initStatus);
     while (true)
       ;
   }
 
   message.begin();
-  nfc.setReaderWriterMode();
   Serial.print("Waiting for a Card...");
 }
 

@@ -14,24 +14,26 @@
  * Distributed as-is; no warranty is given.
  */
 
-#include <Electroniccats_PN7150.h>
+#ifndef PN71XX_USE_SPI
+#define PN71XX_USE_SPI 0
+#endif
 
-#define PN7150_IRQ (11)
-#define PN7150_VEN (13)
-#define PN7150_ADDR (0x28)
+#include <Electroniccats_PN7150.h>
+#include <Electroniccats_PN71xx_ExampleTransport.h>
 
 // Function prototypes
 void messageSentCallback();
 
-Electroniccats_PN7150 nfc(PN7150_IRQ, PN7150_VEN, PN7150_ADDR, PN7150); // creates a global NFC device interface object, attached to pins 7 (IRQ) and 8 (VEN) and using the default I2C address 0x28,specify PN7150 or PN7160 in constructor
+PN71XX_NFC_INSTANCE(nfc); // switch transport with PN71XX_USE_SPI
 
 NdefMessage message;
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(PN71XX_SERIAL_BAUD);
   while (!Serial)
     ;
   Serial.println("Send NDEF Message with PN7150/60");
+  pn71xxConfigureExampleTransport(nfc);
 
   message.addTextRecord("Hello");                          // English by default
   message.addTextRecord("world", "en");                    // English explicitly, the library only supports two letter language codes (ISO 639-1) by now
@@ -51,14 +53,12 @@ void setup() {
 
   Serial.println("Initializing...");
 
-  if (nfc.begin()) {
-    Serial.println("Error initializing PN7150");
+  uint8_t initStatus = pn71xxInitializeDiscoveryMode(nfc, 2);
+  if (initStatus != PN71XX_EXAMPLE_INIT_OK) {
+    pn71xxPrintInitError(Serial, initStatus);
     while (true)
       ;
   }
-
-  // Needed to detect readers
-  nfc.setEmulationMode();
   Serial.print("Waiting for an NDEF device");
 }
 

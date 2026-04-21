@@ -15,7 +15,7 @@ This repository is a product-focused fork of the original Electronic Cats PN7150
 
 ## Highlights
 
-- Based on NXP PN71xx NFC controller devices with I2C host communication
+- Based on NXP PN71xx NFC controller devices with I2C host communication, plus SPI host support for PN7160/PN7161 SPI variants
 - Supports reader/writer mode, peer-to-peer mode, and card emulation mode
 - Works with common NFC technologies used by the upstream PN7150/PN7160 stack, including ISO14443-A/B, ISO15693, MIFARE, and NDEF workflows
 - Includes ready-to-run Arduino examples for tag detection, NDEF read/write, MIFARE Classic, ISO15693, and P2P discovery
@@ -71,6 +71,27 @@ Electroniccats_PN7150 nfc(PN7160_IRQ, PN7160_VEN, PN7160_ADDR, PN7160);
 - Bring an NFC tag close to the module antenna
 - Use the included examples to read UID, read/write NDEF, or access MIFARE/ISO15693 blocks
 
+### 5. Use the examples over SPI
+
+For the ELECHOUSE **PN7161 MINI V1 SPI** board, the shared examples now support a transport switch:
+
+- Open an example such as `examples/DetectTags/DetectTags.ino`
+- Change `#define PN71XX_USE_SPI 0` to `1`
+- Compile for your ESP32 or other supported MCU
+
+The default SPI example mapping is:
+
+| Signal | Default Pin |
+| --- | --- |
+| `IRQ` | `GPIO14` |
+| `VEN` | `GPIO13` |
+| `SS` | `GPIO5` |
+| `SCK` | `GPIO18` |
+| `MISO` | `GPIO19` |
+| `MOSI` | `GPIO23` |
+
+These defaults are provided through `src/Electroniccats_PN71xx_ExampleTransport.h` and can be overridden per sketch if needed.
+
 ## Included Examples
 
 - `examples/DetectTags` - detect nearby NFC tags and print card information
@@ -86,12 +107,15 @@ Electroniccats_PN7150 nfc(PN7160_IRQ, PN7160_VEN, PN7160_ADDR, PN7160);
 - `examples/ISO15693_write_block` - write ISO15693 blocks
 - `examples/P2P_Discovery` - peer-to-peer discovery demo
 - `examples/PN7160_testing` - ESP32-oriented PN7160 smoke test with LED activity while a tag is present
+- `examples/PN7161_SPI_testing` - experimental PN7161 SPI smoke test for ELECHOUSE PN7161 MINI V1 SPI
 
 ## Notes for ELECHOUSE Users
 
 - The source code keeps the upstream header and class name: `Electroniccats_PN7150`
 - Some inherited examples still default to `PN7150`; for ELECHOUSE PN7160 and PN7161, change the constructor to use `PN7160`
 - The default I2C address is `0x28`
+- Shared examples now support both I2C and SPI through `PN71XX_USE_SPI`
+- For SPI builds, the examples use the PN7160-compatible code path and enable the 3.3V single-rail preset automatically
 - ELECHOUSE also provides an address selection guide if you need to change the module I2C address
 
 ## Documentation and Resources

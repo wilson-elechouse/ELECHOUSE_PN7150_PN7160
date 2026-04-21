@@ -12,19 +12,21 @@
  * Distributed as-is; no warranty is given.
  */
 
-#include "Electroniccats_PN7150.h"
+#ifndef PN71XX_USE_SPI
+#define PN71XX_USE_SPI 0
+#endif
 
-#define PN7150_IRQ (11)
-#define PN7150_VEN (13)
-#define PN7150_ADDR (0x28)
+#include "Electroniccats_PN7150.h"
+#include "Electroniccats_PN71xx_ExampleTransport.h"
 
 #define BLK_NB_MFC 4                                // Block that wants to be read
 #define KEY_MFC 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF  // Default Mifare Classic key
 
 // Data to be written in the Mifare Classic block
 #define DATA_WRITE_MFC 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff
+#define DATA_CLEAR_MFC 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 
-Electroniccats_PN7150 nfc(PN7150_IRQ, PN7150_VEN, PN7150_ADDR, PN7150); // creates a global NFC device interface object, attached to pins 7 (IRQ) and 8 (VEN) and using the default I2C address 0x28,specify PN7150 or PN7160 in constructor
+PN71XX_NFC_INSTANCE(nfc); // switch transport with PN71XX_USE_SPI
 
 void PrintBuf(const byte* data, const uint32_t numBytes) {  // Print hex data buffer in format
   uint32_t szPos;
@@ -41,6 +43,24 @@ void PrintBuf(const byte* data, const uint32_t numBytes) {  // Print hex data bu
   Serial.println();
 }
 
+bool WriteMifareBlock(unsigned char *writePart1, unsigned char *writePart2,
+                      unsigned char *resp, unsigned char *respSize,
+                      uint8_t chipWriteAck) {
+  bool status = nfc.readerTagCmd(writePart1, sizeof(writePart1[0]) * 3, resp,
+                                 respSize);
+  if ((status == NFC_ERROR) || (resp[*respSize - 1] != chipWriteAck)) {
+    return false;
+  }
+
+  status = nfc.readerTagCmd(writePart2, sizeof(writePart2[0]) * 17, resp,
+                            respSize);
+  if ((status == NFC_ERROR) || (resp[*respSize - 1] != chipWriteAck)) {
+    return false;
+  }
+
+  return true;
+}
+
 uint8_t PCD_MIFARE_scenario(void) {
   Serial.println("Start reading process...");
   bool status;
@@ -52,7 +72,8 @@ uint8_t PCD_MIFARE_scenario(void) {
   unsigned char Read[] = {0x10, 0x30, BLK_NB_MFC};
   /* Write block 4 */
   unsigned char WritePart1[] = {0x10, 0xA0, BLK_NB_MFC};
-  unsigned char WritePart2[] = {0x10, DATA_WRITE_MFC};
+  unsigned char WriteDataPart2[] = {0x10, DATA_WRITE_MFC};
+  unsigned char ClearDataPart2[] = {0x10, DATA_CLEAR_MFC};
 
   // Determine ChipWriteAck based on chip model
   uint8_t ChipWriteAck = (nfc.getChipModel() == PN7160) ? 0x14 : 0x00;
@@ -76,29 +97,45 @@ uint8_t PCD_MIFARE_scenario(void) {
   Serial.print("-------------------------Block ");
   Serial.print(BLK_NB_MFC, DEC);
   Serial.println("-------------------------");
+  Serial.println("Original data:");
   PrintBuf(Resp + 1, RespSize - 2);
 
-  /* Write block */
-  status = nfc.readerTagCmd(WritePart1, sizeof(WritePart1), Resp, &RespSize);
-  if ((status == NFC_ERROR) || (Resp[RespSize - 1] != ChipWriteAck)) {
-    Serial.print("Error writing block!");
+  /* Write test data */
+  Serial.println("Writing test pattern...");
+  if (!WriteMifareBlock(WritePart1, WriteDataPart2, Resp, &RespSize,
+                        ChipWriteAck)) {
+    Serial.print("Error writing test pattern!");
     return 3;
   }
-  status = nfc.readerTagCmd(WritePart2, sizeof(WritePart2), Resp, &RespSize);
-  if ((status == NFC_ERROR) || (Resp[RespSize - 1] != ChipWriteAck)) {
-    Serial.print("Error writing block!");
-    return 4;
-  }
-  /* Read block again to see te changes*/
+
+  /* Read block again to see the changes */
   status = nfc.readerTagCmd(Read, sizeof(Read), Resp, &RespSize);
   if ((status == NFC_ERROR) || (Resp[RespSize - 1] != 0)) {
-    Serial.print("Error reading block!");
-    return 5;
+    Serial.print("Error reading back test pattern!");
+    return 4;
   }
   Serial.print("------------------------Sector ");
   Serial.print(BLK_NB_MFC / 4, DEC);
   Serial.println("-------------------------");
-  Serial.print("----------------- New Data in Block ");
+  Serial.print("----------------- Test Data in Block ");
+  Serial.print(BLK_NB_MFC, DEC);
+  Serial.println("-----------------");
+  PrintBuf(Resp + 1, RespSize - 2);
+
+  /* Clear block to zeros */
+  Serial.println("Clearing block to zeros...");
+  if (!WriteMifareBlock(WritePart1, ClearDataPart2, Resp, &RespSize,
+                        ChipWriteAck)) {
+    Serial.print("Error clearing block!");
+    return 5;
+  }
+
+  status = nfc.readerTagCmd(Read, sizeof(Read), Resp, &RespSize);
+  if ((status == NFC_ERROR) || (Resp[RespSize - 1] != 0)) {
+    Serial.print("Error reading back cleared block!");
+    return 6;
+  }
+  Serial.print("----------------- Cleared Data in Block ");
   Serial.print(BLK_NB_MFC, DEC);
   Serial.println("-----------------");
   PrintBuf(Resp + 1, RespSize - 2);
@@ -106,30 +143,19 @@ uint8_t PCD_MIFARE_scenario(void) {
 }
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(PN71XX_SERIAL_BAUD);
   while (!Serial)
     ;
-  Serial.println("Read mifare classic data block 4 with PN7150/60");
+  Serial.println("Write mifare classic data block 4 with PN7150/60");
+  pn71xxConfigureExampleTransport(nfc);
 
   Serial.println("Initializing...");
-  if (nfc.connectNCI()) {  // Wake up the board
-    Serial.println("Error while setting up the mode, check connections!");
+  uint8_t initStatus = pn71xxInitializeDiscoveryMode(nfc);
+  if (initStatus != PN71XX_EXAMPLE_INIT_OK) {
+    pn71xxPrintInitError(Serial, initStatus);
     while (1)
       ;
   }
-
-  if (nfc.configureSettings()) {
-    Serial.println("The Configure Settings is failed!");
-    while (1)
-      ;
-  }
-
-  if (nfc.configMode()) {  // Set up the configuration mode
-    Serial.println("The Configure Mode is failed!!");
-    while (1)
-      ;
-  }
-  nfc.startDiscovery();  // NCI Discovery mode
   Serial.println("Waiting for an Mifare Classic Card...");
 }
 

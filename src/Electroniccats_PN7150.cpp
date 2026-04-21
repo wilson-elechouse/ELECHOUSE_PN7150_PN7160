@@ -46,11 +46,39 @@ Electroniccats_PN7150::Electroniccats_PN7150(uint8_t IRQpin, uint8_t VENpin,
                                              uint8_t I2Caddress,
                                              ChipModel chipModel, TwoWire *wire)
     : _IRQpin(IRQpin), _VENpin(VENpin), _I2Caddress(I2Caddress),
-      _chipModel(chipModel), _wire(wire) {
+      _SSpin(NO_PN71XX_SPI_PIN), _SCKpin(NO_PN71XX_SPI_PIN),
+      _MISOpin(NO_PN71XX_SPI_PIN), _MOSIpin(NO_PN71XX_SPI_PIN),
+      _chipModel(chipModel), _hostInterface(HostInterface_I2C), _wire(wire),
+      _spi(&SPI), _tracePort(nullptr), _pn7160FixedVbat3V3(false),
+      _traceVerbose(false), _rfDiscoveryId(0x01), _nextRfDiscoveryId(0x02) {
   pinMode(_IRQpin, INPUT);
 
   if (_VENpin != 255)
     pinMode(_VENpin, OUTPUT);
+
+  this->_hasBeenInitialized = false;
+}
+
+Electroniccats_PN7150::Electroniccats_PN7150(uint8_t IRQpin, uint8_t VENpin,
+                                             uint8_t SSPin, uint8_t SCKpin,
+                                             uint8_t MISOpin, uint8_t MOSIpin,
+                                             ChipModel chipModel,
+                                             SPIClass *spi)
+    : _IRQpin(IRQpin), _VENpin(VENpin), _I2Caddress(0), _SSpin(SSPin),
+      _SCKpin(SCKpin), _MISOpin(MISOpin), _MOSIpin(MOSIpin),
+      _chipModel(chipModel), _hostInterface(HostInterface_SPI),
+      _wire(&Wire), _spi(spi), _tracePort(nullptr),
+      _pn7160FixedVbat3V3(false), _traceVerbose(false), _rfDiscoveryId(0x01),
+      _nextRfDiscoveryId(0x02) {
+  pinMode(_IRQpin, INPUT);
+
+  if (_VENpin != 255)
+    pinMode(_VENpin, OUTPUT);
+
+  if (_SSpin != NO_PN71XX_SPI_PIN) {
+    pinMode(_SSpin, OUTPUT);
+    digitalWrite(_SSpin, HIGH);
+  }
 
   this->_hasBeenInitialized = false;
 }
@@ -78,6 +106,80 @@ uint8_t Electroniccats_PN7150::begin() {
   return SUCCESS;
 }
 
+void Electroniccats_PN7150::eventPrint(const char *message) const {
+  if (_tracePort != nullptr) {
+    _tracePort->println(message);
+  }
+}
+
+void Electroniccats_PN7150::eventPrintValue(const char *label,
+                                            uint32_t value) const {
+  if (_tracePort != nullptr) {
+    _tracePort->print(label);
+    _tracePort->println(value, HEX);
+  }
+}
+
+void Electroniccats_PN7150::eventPrintBuffer(const char *label,
+                                             const uint8_t *buffer,
+                                             uint8_t length) const {
+  if ((_tracePort == nullptr) || (buffer == nullptr) || (length == 0)) {
+    return;
+  }
+
+  _tracePort->print(label);
+  for (uint8_t index = 0; index < length; index++) {
+    if (index != 0) {
+      _tracePort->print(' ');
+    }
+    if (buffer[index] < 0x10) {
+      _tracePort->print('0');
+    }
+    _tracePort->print(buffer[index], HEX);
+  }
+  _tracePort->println();
+}
+
+void Electroniccats_PN7150::tracePrint(const char *message) const {
+  if ((_tracePort != nullptr) && _traceVerbose) {
+    _tracePort->println(message);
+  }
+}
+
+void Electroniccats_PN7150::tracePrintValue(const char *label,
+                                            uint32_t value) const {
+  if ((_tracePort != nullptr) && _traceVerbose) {
+    _tracePort->print(label);
+    _tracePort->println(value, HEX);
+  }
+}
+
+void Electroniccats_PN7150::setTracePort(Stream *stream) { _tracePort = stream; }
+
+void Electroniccats_PN7150::setVerboseTrace(bool enabled) {
+  _traceVerbose = enabled;
+}
+
+void Electroniccats_PN7150::traceRemoteDeviceSummary(const char *prefix) const {
+  if (_tracePort == nullptr) {
+    return;
+  }
+
+  _tracePort->print(prefix);
+  _tracePort->print(" if=0x");
+  _tracePort->print(remoteDevice.getInterface(), HEX);
+  _tracePort->print(" prot=0x");
+  _tracePort->print(remoteDevice.getProtocol(), HEX);
+  _tracePort->print(" tech=0x");
+  _tracePort->println(remoteDevice.getModeTech(), HEX);
+
+  if ((remoteDevice.getModeTech() == tech.PASSIVE_NFCA) &&
+      (remoteDevice.getNFCID() != NULL) && (remoteDevice.getNFCIDLen() > 0)) {
+    eventPrintBuffer("[EVENT] NFC-A UID=", remoteDevice.getNFCID(),
+                     remoteDevice.getNFCIDLen());
+  }
+}
+
 bool Electroniccats_PN7150::isTimeOut() const {
   return ((millis() - timeOutStartTime) >= timeOut);
 }
@@ -93,14 +195,22 @@ uint8_t Electroniccats_PN7150::wakeupNCI() { // the device has to wake up using
   uint16_t NbBytes = 0;
 
   // Reset RF settings restauration flag
+  tracePrint("[TRACE] wakeupNCI: sending CORE_RESET_CMD");
   (void)writeData(NCICoreReset, 4);
   getMessage(15);
   NbBytes = rxMessageLength;
+  tracePrintValue("[TRACE] wakeupNCI rsp len=0x", NbBytes);
+  if (NbBytes >= 2) {
+    tracePrintValue("[TRACE] wakeupNCI rsp[0]=0x", rxBuffer[0]);
+    tracePrintValue("[TRACE] wakeupNCI rsp[1]=0x", rxBuffer[1]);
+  }
   if ((NbBytes == 0) || (rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x00)) {
+    tracePrint("[TRACE] wakeupNCI failed on reset response");
     return ERROR;
   }
   getMessage();
   NbBytes = rxMessageLength;
+  tracePrintValue("[TRACE] wakeupNCI ntf len=0x", NbBytes);
   if (NbBytes != 0) {
     // NCI_PRINT_BUF("NCI << ", Answer, NbBytes);
     //  Is CORE_GENERIC_ERROR_NTF ?
@@ -140,6 +250,39 @@ bool Electroniccats_PN7150::hasMessage() const {
 
 uint8_t Electroniccats_PN7150::writeData(uint8_t txBuffer[],
                                          uint32_t txBufferLevel) const {
+  if (_hostInterface == HostInterface_SPI) {
+    for (uint8_t attempt = 0; attempt < 3; attempt++) {
+      tracePrintValue("[TRACE] SPI write attempt=0x", attempt);
+      if (txBufferLevel >= 3) {
+        tracePrintValue("[TRACE] SPI tx[0]=0x", txBuffer[0]);
+        tracePrintValue("[TRACE] SPI tx[1]=0x", txBuffer[1]);
+        tracePrintValue("[TRACE] SPI tx[2]=0x", txBuffer[2]);
+      }
+      _spi->beginTransaction(
+          SPISettings(PN71XX_SPI_CLOCK_HZ, MSBFIRST, SPI_MODE0));
+      digitalWrite(_SSpin, LOW);
+
+      uint8_t firstResponse = _spi->transfer(PN71XX_SPI_WRITE_TDD);
+      tracePrintValue("[TRACE] SPI write TDD rsp=0x", firstResponse);
+      if (firstResponse == 0xFF) {
+        for (uint32_t index = 0; index < txBufferLevel; index++) {
+          _spi->transfer(txBuffer[index]);
+        }
+
+        digitalWrite(_SSpin, HIGH);
+        _spi->endTransaction();
+        return SUCCESS;
+      }
+
+      digitalWrite(_SSpin, HIGH);
+      _spi->endTransaction();
+      delay(5);
+    }
+
+    tracePrint("[TRACE] SPI write failed after retries");
+    return ERROR;
+  }
+
   uint32_t nmbrBytesWritten = 0;
   _wire->beginTransmission((uint8_t)_I2Caddress); // configura transmision
   nmbrBytesWritten =
@@ -164,6 +307,55 @@ uint32_t Electroniccats_PN7150::readData(uint8_t rxBuffer[]) const {
   uint32_t bytesReceived; // keeps track of how many bytes we actually received
   if (hasMessage()) { // only try to read something if the PN7150 indicates it
                       // has something
+    if (_hostInterface == HostInterface_SPI) {
+      _spi->beginTransaction(
+          SPISettings(PN71XX_SPI_CLOCK_HZ, MSBFIRST, SPI_MODE0));
+      digitalWrite(_SSpin, LOW);
+
+      uint8_t firstResponse = _spi->transfer(PN71XX_SPI_READ_TDD);
+      tracePrintValue("[TRACE] SPI read TDD rsp=0x", firstResponse);
+      if (firstResponse != 0xFF) {
+        digitalWrite(_SSpin, HIGH);
+        _spi->endTransaction();
+        return 0;
+      }
+
+      rxBuffer[0] = _spi->transfer(0x00);
+      rxBuffer[1] = _spi->transfer(0x00);
+      rxBuffer[2] = _spi->transfer(0x00);
+      tracePrintValue("[TRACE] SPI rx[0]=0x", rxBuffer[0]);
+      tracePrintValue("[TRACE] SPI rx[1]=0x", rxBuffer[1]);
+      tracePrintValue("[TRACE] SPI rx[2]=0x", rxBuffer[2]);
+
+      if ((rxBuffer[0] == 0xFF) && (rxBuffer[1] == 0xFF) &&
+          (rxBuffer[2] == 0xFF)) {
+        tracePrint("[TRACE] SPI invalid all-0xFF header, ignoring");
+        digitalWrite(_SSpin, HIGH);
+        _spi->endTransaction();
+        return 0;
+      }
+
+      bytesReceived = 3;
+      uint8_t payloadLength = rxBuffer[2];
+      if ((payloadLength + MsgHeaderSize) > (MaxPayloadSize + MsgHeaderSize)) {
+        digitalWrite(_SSpin, HIGH);
+        _spi->endTransaction();
+        return 0;
+      }
+
+      for (uint32_t index = 3; index < (payloadLength + MsgHeaderSize);
+           index++) {
+        rxBuffer[index] = _spi->transfer(0x00);
+      }
+
+      bytesReceived += payloadLength;
+      tracePrintValue("[TRACE] SPI read payload len=0x", payloadLength);
+
+      digitalWrite(_SSpin, HIGH);
+      _spi->endTransaction();
+      return bytesReceived;
+    }
+
     bytesReceived = _wire->requestFrom(
         _I2Caddress, (uint8_t)3); // first reading the header, as this contains
                                   // how long the payload will be
@@ -216,6 +408,28 @@ int Electroniccats_PN7150::getFirmwareVersion() {
 // Deprecated, use getFirmwareVersion() instead
 int Electroniccats_PN7150::GetFwVersion() { return getFirmwareVersion(); }
 
+void Electroniccats_PN7150::setPn7160FixedVbat3V3(bool enabled) {
+  _pn7160FixedVbat3V3 = enabled;
+}
+
+void Electroniccats_PN7150::hardwareReset() {
+  if (_VENpin == 255) {
+    return;
+  }
+
+  tracePrint("[TRACE] hardwareReset: VEN high");
+  digitalWrite(_VENpin, HIGH);
+  delay(5);
+
+  tracePrint("[TRACE] hardwareReset: VEN low");
+  digitalWrite(_VENpin, LOW);
+  delay(_hostInterface == HostInterface_SPI ? 20 : 5);
+
+  tracePrint("[TRACE] hardwareReset: VEN high");
+  digitalWrite(_VENpin, HIGH);
+  delay(_hostInterface == HostInterface_SPI ? 20 : 5);
+}
+
 uint8_t Electroniccats_PN7150::connectNCI() {
   uint8_t i = 2;
   uint8_t NCICoreInit_PN7150[] = {0x20, 0x01, 0x00};
@@ -226,24 +440,35 @@ uint8_t Electroniccats_PN7150::connectNCI() {
     return SUCCESS;
   }
 
-  // Open connection to NXPNCI
-  // uses setSDA and set SCL with compatible boards
-  //_wire->setSDA(0);  // GPIO 0 como SDA
-  //_wire->setSCL(1);  // GPIO 1 como SCL
-
-  // Open connection to NXPNCI
-  _wire->begin();
-  if (_VENpin != 255) {
-    digitalWrite(_VENpin, HIGH);
-    delay(1);
-    digitalWrite(_VENpin, LOW);
-    delay(1);
-    digitalWrite(_VENpin, HIGH);
-    delay(3);
+  if (_hostInterface == HostInterface_SPI) {
+    if (_chipModel == PN7150) {
+      return ERROR;
+    }
+#if defined(ARDUINO_ARCH_ESP32)
+    if (_SCKpin != NO_PN71XX_SPI_PIN && _MISOpin != NO_PN71XX_SPI_PIN &&
+        _MOSIpin != NO_PN71XX_SPI_PIN && _SSpin != NO_PN71XX_SPI_PIN) {
+      _spi->begin(_SCKpin, _MISOpin, _MOSIpin, _SSpin);
+    } else {
+      _spi->begin();
+    }
+#else
+    _spi->begin();
+#endif
+    digitalWrite(_SSpin, HIGH);
+    tracePrint("[TRACE] connectNCI: SPI initialized");
+  } else {
+    // Open connection to NXPNCI
+    // uses setSDA and set SCL with compatible boards
+    //_wire->setSDA(0);  // GPIO 0 como SDA
+    //_wire->setSCL(1);  // GPIO 1 como SCL
+    _wire->begin();
   }
+
+  hardwareReset();
 
   // Loop until NXPNCI answers
   while (wakeupNCI() != SUCCESS) {
+    tracePrintValue("[TRACE] connectNCI wakeup retry remaining=0x", i);
     if (i-- == 0)
       return ERROR;
     delay(500);
@@ -497,6 +722,9 @@ bool Electroniccats_PN7150::configureSettings(void) {
                                        0x0B, 0x11, 0x01, 0x01, 0x01, 0x00,
                                        0x00, 0x00, 0x40, 0x00, 0xD0, 0x0C};
 #endif
+  uint8_t NxpNci_TVDD_CONF_3rdGen_Fixed3V3[] = {
+      0x20, 0x02, 0x0F, 0x01, 0xA0, 0x0E, 0x0B, 0x11, 0x01,
+      0x02, 0x02, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x10, 0x0C};
 #endif
 
 #if NXP_RF_CONF
@@ -635,6 +863,7 @@ bool Electroniccats_PN7150::configureSettings(void) {
   /* Apply settings */
 #if NXP_CORE_CONF
   if (sizeof(NxpNci_CORE_CONF) != 0) {
+    tracePrint("[TRACE] configureSettings: CORE_CONF");
     isResetRequired = true;
 
     if (_chipModel == PN7150)
@@ -655,6 +884,7 @@ bool Electroniccats_PN7150::configureSettings(void) {
 
 #if NXP_CORE_STANDBY
   if (sizeof(NxpNci_CORE_STANDBY) != 0) {
+    tracePrint("[TRACE] configureSettings: CORE_STANDBY");
     (void)(writeData(NxpNci_CORE_STANDBY, sizeof(NxpNci_CORE_STANDBY)));
     getMessage(10);
     if ((rxBuffer[0] != 0x4F) || (rxBuffer[1] != 0x00) ||
@@ -673,6 +903,7 @@ bool Electroniccats_PN7150::configureSettings(void) {
      restored to their default value */
 #if (NXP_CORE_CONF_EXTN | NXP_CLK_CONF | NXP_TVDD_CONF | NXP_RF_CONF)
   /* First read timestamp stored in NFC Controller */
+  tracePrint("[TRACE] configureSettings: READ_TIMESTAMP");
   if (gNfcController_generation == 1)
     NCIReadTS[5] = 0x0F;
   (void)writeData(NCIReadTS, sizeof(NCIReadTS));
@@ -696,6 +927,7 @@ bool Electroniccats_PN7150::configureSettings(void) {
   /* Apply settings */
 #if NXP_CORE_CONF_EXTN
   if (sizeof(NxpNci_CORE_CONF_EXTN) != 0) {
+    tracePrint("[TRACE] configureSettings: CORE_CONF_EXTN");
 
     if (_chipModel == PN7150)
       (void)writeData(NxpNci_CORE_CONF_EXTN, sizeof(NxpNci_CORE_CONF_EXTN));
@@ -716,6 +948,7 @@ bool Electroniccats_PN7150::configureSettings(void) {
 
 #if NXP_CLK_CONF
   if (sizeof(NxpNci_CLK_CONF) != 0) {
+    tracePrint("[TRACE] configureSettings: CLK_CONF");
     isResetRequired = true;
 
     (void)writeData(NxpNci_CLK_CONF, sizeof(NxpNci_CLK_CONF));
@@ -734,8 +967,12 @@ bool Electroniccats_PN7150::configureSettings(void) {
 
 #if NXP_TVDD_CONF
   if (NxpNci_CONF_size != 0) {
+    tracePrint("[TRACE] configureSettings: TVDD_CONF");
     if (_chipModel == PN7150)
       (void)writeData(NxpNci_TVDD_CONF_2ndGen, sizeof(NxpNci_TVDD_CONF_2ndGen));
+    else if (_chipModel == PN7160 && _pn7160FixedVbat3V3)
+      (void)writeData(NxpNci_TVDD_CONF_3rdGen_Fixed3V3,
+                      sizeof(NxpNci_TVDD_CONF_3rdGen_Fixed3V3));
     else if (_chipModel == PN7160)
       (void)writeData(NxpNci_TVDD_CONF_3rdGen, sizeof(NxpNci_TVDD_CONF_3rdGen));
     getMessage(10);
@@ -751,6 +988,7 @@ bool Electroniccats_PN7150::configureSettings(void) {
 
 #if NXP_RF_CONF
   if (NxpNci_CONF_size != 0) {
+    tracePrint("[TRACE] configureSettings: RF_CONF");
 
     if (_chipModel == PN7150)
       (void)writeData(NxpNci_RF_CONF_2ndGen, sizeof(NxpNci_RF_CONF_2ndGen));
@@ -787,6 +1025,7 @@ bool Electroniccats_PN7150::configureSettings(void) {
 #endif
 
   if (isResetRequired) {
+    tracePrint("[TRACE] configureSettings: APPLY_RESET");
     /* Reset the NFC Controller to insure new settings apply */
     (void)writeData(NCICoreReset, sizeof(NCICoreReset));
     getMessage();
@@ -899,6 +1138,9 @@ bool Electroniccats_PN7150::configureSettings(uint8_t *uidcf, uint8_t uidlen) {
                                        0x0B, 0x11, 0x01, 0x01, 0x01, 0x00,
                                        0x00, 0x00, 0x40, 0x00, 0xD0, 0x0C};
 #endif
+  uint8_t NxpNci_TVDD_CONF_3rdGen_Fixed3V3[] = {
+      0x20, 0x02, 0x0F, 0x01, 0xA0, 0x0E, 0x0B, 0x11, 0x01,
+      0x02, 0x02, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x10, 0x0C};
 #endif
 
 #if NXP_RF_CONF
@@ -1142,6 +1384,9 @@ bool Electroniccats_PN7150::configureSettings(uint8_t *uidcf, uint8_t uidlen) {
   if (NxpNci_CONF_size != 0) {
     if (_chipModel == PN7150)
       (void)writeData(NxpNci_TVDD_CONF_2ndGen, sizeof(NxpNci_TVDD_CONF_2ndGen));
+    else if (_chipModel == PN7160 && _pn7160FixedVbat3V3)
+      (void)writeData(NxpNci_TVDD_CONF_3rdGen_Fixed3V3,
+                      sizeof(NxpNci_TVDD_CONF_3rdGen_Fixed3V3));
     else if (_chipModel == PN7160)
       (void)writeData(NxpNci_TVDD_CONF_3rdGen, sizeof(NxpNci_TVDD_CONF_3rdGen));
     getMessage(10);
@@ -1302,10 +1547,16 @@ wait:
   } while (((rxBuffer[0] != 0x61) ||
             ((rxBuffer[1] != 0x05) && (rxBuffer[1] != 0x03))) &&
            (getFlag == true));
+
+  if ((getFlag == false) || (rxMessageLength == 0)) {
+    return ERROR;
+  }
+
   gNextTag_Protocol = PROT_UNDETERMINED;
 
   /* Is RF_INTF_ACTIVATED_NTF ? */
   if (rxBuffer[1] == 0x05) {
+    _rfDiscoveryId = rxBuffer[3];
     pRfIntf->Interface = rxBuffer[4];
     remoteDevice.setInterface(rxBuffer[4]);
     pRfIntf->Protocol = rxBuffer[5];
@@ -1315,6 +1566,8 @@ wait:
     pRfIntf->MoreTags = false;
     remoteDevice.setMoreTagsAvailable(false);
     remoteDevice.setInfo(pRfIntf, &rxBuffer[10]);
+    eventPrint("[EVENT] RF_INTF_ACTIVATED_NTF");
+    traceRemoteDeviceSummary("[EVENT] Activated");
 
     // P2P
     /* Verifying if not a P2P device also presenting T4T emulation */
@@ -1367,6 +1620,10 @@ wait:
       }
     }
   } else { /* RF_DISCOVER_NTF */
+    uint8_t discoveryId = rxBuffer[3];
+    bool hasMoreDiscoverNotifications =
+        (rxBuffer[rxMessageLength - 1] == 0x02);
+
     pRfIntf->Interface = INTF_UNDETERMINED;
     remoteDevice.setInterface(interface.UNDETERMINED);
     pRfIntf->Protocol = rxBuffer[4];
@@ -1375,20 +1632,27 @@ wait:
     remoteDevice.setModeTech(rxBuffer[5]);
     pRfIntf->MoreTags = true;
     remoteDevice.setMoreTagsAvailable(true);
+    eventPrint("[EVENT] RF_DISCOVER_NTF");
+    eventPrintValue("[EVENT] Discover protocol=0x", remoteDevice.getProtocol());
+    eventPrintValue("[EVENT] Discover tech=0x", remoteDevice.getModeTech());
 
-    /* Get next NTF for further activation */
-    do {
-      if (!getMessage(100))
-        return ERROR;
-    } while ((rxBuffer[0] != 0x61) || (rxBuffer[1] != 0x03));
-    gNextTag_Protocol = rxBuffer[4];
+    /* Get next NTF only when several discoveries are pending */
+    if (hasMoreDiscoverNotifications) {
+      do {
+        if (!getMessage(100))
+          return ERROR;
+      } while ((rxBuffer[0] != 0x61) || (rxBuffer[1] != 0x03));
+      _nextRfDiscoveryId = rxBuffer[3];
+      gNextTag_Protocol = rxBuffer[4];
 
-    /* Remaining NTF ? */
-
-    while (rxBuffer[rxMessageLength - 1] == 0x02)
-      getMessage(100);
+      while (rxBuffer[rxMessageLength - 1] == 0x02) {
+        if (!getMessage(100))
+          return ERROR;
+      }
+    }
 
     /* In case of multiple cards, select the first one */
+    NCIRfDiscoverSelect[3] = discoveryId;
     NCIRfDiscoverSelect[4] = remoteDevice.getProtocol();
     if (remoteDevice.getProtocol() == protocol.ISODEP)
       NCIRfDiscoverSelect[5] = interface.ISODEP;
@@ -1402,21 +1666,25 @@ wait:
     (void)writeData(NCIRfDiscoverSelect, sizeof(NCIRfDiscoverSelect));
     getMessage(100);
 
-    if ((rxBuffer[0] == 0x41) || (rxBuffer[1] == 0x04) ||
+    if ((rxBuffer[0] == 0x41) && (rxBuffer[1] == 0x04) &&
         (rxBuffer[3] == 0x00)) {
-      (void)writeData(rxBuffer, rxMessageLength);
-      getMessage(100);
+      if (!getMessage(100))
+        return ERROR;
 
-      if ((rxBuffer[0] == 0x61) || (rxBuffer[1] == 0x05)) {
+      if ((rxBuffer[0] == 0x61) && (rxBuffer[1] == 0x05)) {
+        _rfDiscoveryId = rxBuffer[3];
         pRfIntf->Interface = rxBuffer[4];
         remoteDevice.setInterface(rxBuffer[4]);
         pRfIntf->Protocol = rxBuffer[5];
         remoteDevice.setProtocol(rxBuffer[5]);
         pRfIntf->ModeTech = rxBuffer[6];
         remoteDevice.setModeTech(rxBuffer[6]);
+        pRfIntf->MoreTags = false;
+        remoteDevice.setMoreTagsAvailable(false);
         remoteDevice.setInfo(pRfIntf, &rxBuffer[10]);
+        eventPrint("[EVENT] RF_INTF_ACTIVATED_NTF");
+        traceRemoteDeviceSummary("[EVENT] Activated");
       }
-
       /* In case of P2P target detected but lost, inform application to restart
          discovery */
       else if (remoteDevice.getProtocol() == protocol.NFCDEP) {
@@ -1429,7 +1697,11 @@ wait:
         getMessage();
 
         goto wait;
+      } else {
+        return ERROR;
       }
+    } else {
+      return ERROR;
     }
   }
 
@@ -1757,9 +2029,18 @@ void Electroniccats_PN7150::presenceCheck(RfIntf_t RfIntf) {
       }
 
       /* Reactivate target */
+      NCISelectMIFARE[3] = _rfDiscoveryId;
       (void)writeData(NCISelectMIFARE, sizeof(NCISelectMIFARE));
-      getMessage();
-      getMessage(100);
+      if (!getMessage(100)) {
+        break;
+      }
+      if ((rxBuffer[0] != 0x41) || (rxBuffer[1] != 0x04) ||
+          (rxBuffer[3] != 0x00)) {
+        break;
+      }
+      if (!getMessage(100)) {
+        break;
+      }
 
       // Again skip leading 0xFF in the new response
       idx = 0;
@@ -1848,19 +2129,41 @@ bool Electroniccats_PN7150::readerReActivate() {
 
   /* First de-activate the target */
   (void)writeData(NCIDeactivate, sizeof(NCIDeactivate));
-  getMessage();
-  getMessage(100);
+  if (!getMessage(100))
+    return ERROR;
+  if ((rxBuffer[0] != 0x41) || (rxBuffer[1] != 0x06) || (rxBuffer[3] != 0x00))
+    return ERROR;
+  if (!getMessage(100))
+    return ERROR;
+  if ((rxBuffer[0] != 0x61) || (rxBuffer[1] != 0x06))
+    return ERROR;
 
   /* Then re-activate the target */
   NCIActivate[4] = remoteDevice.getProtocol();
   NCIActivate[5] = remoteDevice.getInterface();
+  NCIActivate[3] = _rfDiscoveryId;
 
   (void)writeData(NCIActivate, sizeof(NCIActivate));
-  getMessage();
-  getMessage(100);
+  if (!getMessage(100))
+    return ERROR;
+  if ((rxBuffer[0] != 0x41) || (rxBuffer[1] != 0x04) || (rxBuffer[3] != 0x00))
+    return ERROR;
+  if (!getMessage(100))
+    return ERROR;
 
   if ((rxBuffer[0] != 0x61) || (rxBuffer[1] != 0x05))
     return ERROR;
+
+  this->dummyRfInterface.Interface = rxBuffer[4];
+  this->dummyRfInterface.Protocol = rxBuffer[5];
+  this->dummyRfInterface.ModeTech = rxBuffer[6];
+  this->dummyRfInterface.MoreTags = false;
+  remoteDevice.setInterface(rxBuffer[4]);
+  remoteDevice.setProtocol(rxBuffer[5]);
+  remoteDevice.setModeTech(rxBuffer[6]);
+  remoteDevice.setMoreTagsAvailable(false);
+  remoteDevice.setInfo(&this->dummyRfInterface, &rxBuffer[10]);
+
   return SUCCESS;
 }
 
@@ -1899,9 +2202,10 @@ bool Electroniccats_PN7150::ReaderActivateNext(RfIntf_t *pRfIntf) {
     return ERROR;
 
   NCIRfDiscoverSelect[4] = gNextTag_Protocol;
+  NCIRfDiscoverSelect[3] = _nextRfDiscoveryId;
   if (gNextTag_Protocol == PROT_ISODEP)
     NCIRfDiscoverSelect[5] = INTF_ISODEP;
-  else if (gNextTag_Protocol == PROT_ISODEP)
+  else if (gNextTag_Protocol == PROT_NFCDEP)
     NCIRfDiscoverSelect[5] = INTF_NFCDEP;
   else if (gNextTag_Protocol == PROT_MIFARE)
     NCIRfDiscoverSelect[5] = INTF_TAGCMD;
@@ -1913,7 +2217,8 @@ bool Electroniccats_PN7150::ReaderActivateNext(RfIntf_t *pRfIntf) {
 
   if ((rxBuffer[0] == 0x41) && (rxBuffer[1] == 0x04) && (rxBuffer[3] == 0x00)) {
     getMessage(100);
-    if ((rxBuffer[0] == 0x61) || (rxBuffer[1] == 0x05)) {
+    if ((rxBuffer[0] == 0x61) && (rxBuffer[1] == 0x05)) {
+      _rfDiscoveryId = rxBuffer[3];
       pRfIntf->Interface = rxBuffer[4];
       remoteDevice.setInterface(rxBuffer[4]);
       pRfIntf->Protocol = rxBuffer[5];
