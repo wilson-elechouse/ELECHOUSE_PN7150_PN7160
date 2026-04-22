@@ -1,6 +1,6 @@
 # ELECHOUSE PN7160 / PN7161 NFC RFID Module Library
 
-Arduino library for the **ELECHOUSE PN7160 NFC RFID Module** and **ELECHOUSE PN7161 NFC RFID Module-I2C**.
+Arduino library for the **ELECHOUSE PN7160 NFC RFID Module**, **ELECHOUSE PN7161 NFC RFID Module-I2C**, and **ELECHOUSE PN7161 MINI V1 SPI**.
 
 This repository is a product-focused fork of the original Electronic Cats PN7150/PN7160 library. It keeps the upstream Arduino API and source layout, while updating the documentation to match ELECHOUSE hardware, product links, and getting-started resources.
 
@@ -10,8 +10,9 @@ This repository is a product-focused fork of the original Electronic Cats PN7150
 | --- | --- | --- |
 | PN7160 NFC RFID Module | [ELECHOUSE PN7160](https://www.elechouse.com/product/pn7160-nfc-rfid-module/) | I2C NFC module with onboard antenna for reader/writer, card emulation, and peer-to-peer modes |
 | PN7161 NFC RFID Module-I2C | [ELECHOUSE PN7161](https://www.elechouse.com/product/pn7161-nfc-rfid-module-i2c/) | Hardware/software compatible with PN7160 for this library, with Apple ECP support on the module side |
+| PN7161 MINI V1 SPI | [ELECHOUSE PN7161 MINI V1 SPI](https://www.elechouse.com/product/pn7161-mini-v1-spi/) | SPI version for compact integrations, supported through the PN7160-compatible SPI code path in this library |
 
-> For the PN7161 module, use the `PN7160` chip selection in sketches. This codebase exposes `PN7150` and `PN7160` as the available chip models, and PN7161 is used through the PN7160-compatible path.
+> For PN7161 I2C and PN7161 MINI V1 SPI, use the `PN7160` chip selection in sketches. This codebase exposes `PN7150` and `PN7160` as the available chip models, and PN7161 is used through the PN7160-compatible path.
 
 ## Highlights
 
@@ -122,6 +123,7 @@ These defaults are provided through `src/Electroniccats_PN71xx_ExampleTransport.
 
 - Product page: [PN7160 NFC RFID Module](https://www.elechouse.com/product/pn7160-nfc-rfid-module/)
 - Product page: [PN7161 NFC RFID Module-I2C](https://www.elechouse.com/product/pn7161-nfc-rfid-module-i2c/)
+- Product page: [PN7161 MINI V1 SPI](https://www.elechouse.com/product/pn7161-mini-v1-spi/)
 - Library API: [API.md](API.md)
 - ELECHOUSE quick guide: [Quick Guide (PDF)](https://www.elechouse.com/wp-content/uploads/2024/06/Quick-Guide-I2C.pdf)
 - ELECHOUSE ESP32 guide: [ESP32 and PN7160 in Arduino IDE (PDF)](https://www.elechouse.com/wp-content/uploads/2024/06/ESP32-and-PN7160-in-Arduino-IDE.pdf)
