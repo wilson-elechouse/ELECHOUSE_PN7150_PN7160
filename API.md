@@ -1,12 +1,14 @@
 # Electroniccats_PN7150 API Reference
 
-The `Electroniccats_PN7150` class enables Arduino library for I2C access to the PN7150 and PN7160 RFID/Near Field Communication chips.
+The `Electroniccats_PN7150` class enables Arduino library access to the PN7150 and PN7160 RFID/Near Field Communication chips.
 
-For **ELECHOUSE PN7160** and **ELECHOUSE PN7161 NFC RFID Module-I2C** users, use the `PN7160` chip model in the constructor. PN7161 is supported through the PN7160-compatible code path in this library.
+For **ELECHOUSE PN7160**, **ELECHOUSE PN7161 NFC RFID Module-I2C**, and **ELECHOUSE PN7161 MINI V1 SPI** users, use the `PN7160` chip model or PN7160-compatible path in the constructor. PN7161 support in this library is provided through the PN7160-compatible path.
+
+For the PN7161 MINI V1 SPI product, the repository examples can now be used directly by enabling the shared SPI transport switch in the example sketch.
 
 ## Class: `Electroniccats_PN7150`
 
-Include and instantiate the `Electroniccats_PN7150` class. Creates a global NFC device interface object, specifying the chip model (PN7150 or PN7160), attached to designated pins for IRQ and VEN, and using the default I2C address 0x28.
+Include and instantiate the `Electroniccats_PN7150` class. Creates a global NFC device interface object, specifying the chip model (PN7150 or PN7160), attached to designated pins for IRQ and VEN, and using either the default I2C address `0x28` or the SPI constructor for SPI-based boards.
 
 ### Initialization for PN7150
 
@@ -24,7 +26,7 @@ Electroniccats_PN7150 nfc(PN7150_IRQ, PN7150_VEN, PN7150_ADDR); // Creates a glo
 - `uint8_t PN7150_VEN`: "Reset" or "Enable" pin for the device.
 - `uint8_t PN7150_ADDR`: Hexadecimal address for the device, default `0x28`.
 
-### Initialization for PN7160
+### Initialization for PN7160 / PN7161 over I2C
 
 ```c
 #include <Electroniccats_PN7150.h>
@@ -104,6 +106,32 @@ int setupNFC(){
   return setupOK;
 }
 ```
+### Initialization for PN7161 MINI V1 SPI
+
+```c
+#include <Electroniccats_PN7150.h>
+#include <SPI.h>
+
+#define PN71XX_SPI_IRQ  14
+#define PN71XX_SPI_VEN  13
+#define PN71XX_SPI_SS   5
+#define PN71XX_SPI_SCK  18
+#define PN71XX_SPI_MISO 19
+#define PN71XX_SPI_MOSI 23
+
+Electroniccats_PN7150 nfc(PN71XX_SPI_IRQ, PN71XX_SPI_VEN, PN71XX_SPI_SS,
+                          PN71XX_SPI_SCK, PN71XX_SPI_MISO, PN71XX_SPI_MOSI,
+                          PN7160, &SPI);
+```
+
+For the shared repository examples, you can usually avoid manual constructor edits by enabling:
+
+```c
+#define PN71XX_USE_SPI 1
+```
+
+in the example sketch.
+
 ## Electroniccats_PN7150 Methods
 
 ### Method: `getFirmwareVersion`

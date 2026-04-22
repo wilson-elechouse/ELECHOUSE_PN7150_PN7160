@@ -4,6 +4,16 @@ Arduino library for the **ELECHOUSE PN7160 NFC RFID Module**, **ELECHOUSE PN7161
 
 This repository is a product-focused fork of the original Electronic Cats PN7150/PN7160 library. It keeps the upstream Arduino API and source layout, while updating the documentation to match ELECHOUSE hardware, product links, and getting-started resources.
 
+## What changed for PN7161 MINI V1 SPI
+
+The SPI compatibility work is now integrated into the shared example flow. That means the standard examples in this repository can be used with the ELECHOUSE **PN7161 MINI V1 SPI** board instead of requiring a separate SPI-only example path.
+
+In practice:
+
+- The common examples now support both I2C and SPI transport selection
+- The PN7161 MINI V1 SPI board can use the library `examples/` directly
+- SPI builds use the PN7160-compatible code path, which is the intended compatibility path for PN7161 in this library
+
 ## Supported ELECHOUSE Modules
 
 | Module | Product Page | Notes |
@@ -31,6 +41,8 @@ This repository is a product-focused fork of the original Electronic Cats PN7150
 
 ### 2. Wire the module
 
+#### I2C modules: PN7160 / PN7161 NFC RFID Module-I2C
+
 The library needs:
 
 - `SDA`
@@ -49,6 +61,29 @@ For ESP32, ELECHOUSE documentation commonly uses:
 | `VEN` | `GPIO13` |
 
 Adjust the pins to match your board and wiring.
+
+#### SPI module: PN7161 MINI V1 SPI
+
+For the SPI version, connect:
+
+- `SS`
+- `SCK`
+- `MISO`
+- `MOSI`
+- `IRQ`
+- `VEN`
+- power and ground
+
+Default example mapping:
+
+| Signal | Default Pin |
+| --- | --- |
+| `IRQ` | `GPIO14` |
+| `VEN` | `GPIO13` |
+| `SS` | `GPIO5` |
+| `SCK` | `GPIO18` |
+| `MISO` | `GPIO19` |
+| `MOSI` | `GPIO23` |
 
 ### 3. Start with a simple sketch
 
@@ -80,18 +115,11 @@ For the ELECHOUSE **PN7161 MINI V1 SPI** board, the shared examples now support 
 - Change `#define PN71XX_USE_SPI 0` to `1`
 - Compile for your ESP32 or other supported MCU
 
-The default SPI example mapping is:
-
-| Signal | Default Pin |
-| --- | --- |
-| `IRQ` | `GPIO14` |
-| `VEN` | `GPIO13` |
-| `SS` | `GPIO5` |
-| `SCK` | `GPIO18` |
-| `MISO` | `GPIO19` |
-| `MOSI` | `GPIO23` |
-
 These defaults are provided through `src/Electroniccats_PN71xx_ExampleTransport.h` and can be overridden per sketch if needed.
+
+If you are updating older product documentation, the key point is now:
+
+> The PN7161 MINI V1 SPI board can use the standard library examples in this repository after enabling SPI mode.
 
 ## Included Examples
 
@@ -113,7 +141,8 @@ These defaults are provided through `src/Electroniccats_PN71xx_ExampleTransport.
 ## Notes for ELECHOUSE Users
 
 - The source code keeps the upstream header and class name: `Electroniccats_PN7150`
-- Some inherited examples still default to `PN7150`; for ELECHOUSE PN7160 and PN7161, change the constructor to use `PN7160`
+- The codebase still exposes `PN7150` and `PN7160` as the selectable chip models
+- For ELECHOUSE PN7160, PN7161 NFC RFID Module-I2C, and PN7161 MINI V1 SPI, use the `PN7160` compatibility path
 - The default I2C address is `0x28`
 - Shared examples now support both I2C and SPI through `PN71XX_USE_SPI`
 - For SPI builds, the examples use the PN7160-compatible code path and enable the 3.3V single-rail preset automatically
@@ -121,15 +150,25 @@ These defaults are provided through `src/Electroniccats_PN71xx_ExampleTransport.
 
 ## Documentation and Resources
 
-- Product page: [PN7160 NFC RFID Module](https://www.elechouse.com/product/pn7160-nfc-rfid-module/)
-- Product page: [PN7161 NFC RFID Module-I2C](https://www.elechouse.com/product/pn7161-nfc-rfid-module-i2c/)
-- Product page: [PN7161 MINI V1 SPI](https://www.elechouse.com/product/pn7161-mini-v1-spi/)
-- Library API: [API.md](API.md)
-- ELECHOUSE quick guide: [Quick Guide (PDF)](https://www.elechouse.com/wp-content/uploads/2024/06/Quick-Guide-I2C.pdf)
-- ELECHOUSE ESP32 guide: [ESP32 and PN7160 in Arduino IDE (PDF)](https://www.elechouse.com/wp-content/uploads/2024/06/ESP32-and-PN7160-in-Arduino-IDE.pdf)
-- ELECHOUSE I2C address guide: [I2C Address Setting (PDF)](https://www.elechouse.com/wp-content/uploads/2024/06/I2C-address-setting.pdf)
-- ELECHOUSE PN7160 documentation: [PN7160 Documentation](https://www.elechouse.com/docs/pn7160/)
-- ELECHOUSE PN7161 documentation: [PN7161 Documentation](https://www.elechouse.com/docs/pn7161/)
+### Product pages
+
+- [PN7160 NFC RFID Module](https://www.elechouse.com/product/pn7160-nfc-rfid-module/)
+- [PN7161 NFC RFID Module-I2C](https://www.elechouse.com/product/pn7161-nfc-rfid-module-i2c/)
+- [PN7161 MINI V1 SPI](https://www.elechouse.com/product/pn7161-mini-v1-spi/)
+
+### Repository docs
+
+- [Library API](API.md)
+- Shared Arduino examples under [`examples/`](examples)
+- SPI/I2C example transport defaults in [`src/Electroniccats_PN71xx_ExampleTransport.h`](src/Electroniccats_PN71xx_ExampleTransport.h)
+
+### ELECHOUSE guides
+
+- [Quick Guide (PDF)](https://www.elechouse.com/wp-content/uploads/2024/06/Quick-Guide-I2C.pdf)
+- [ESP32 and PN7160 in Arduino IDE (PDF)](https://www.elechouse.com/wp-content/uploads/2024/06/ESP32-and-PN7160-in-Arduino-IDE.pdf)
+- [I2C Address Setting (PDF)](https://www.elechouse.com/wp-content/uploads/2024/06/I2C-address-setting.pdf)
+- [PN7160 Documentation](https://www.elechouse.com/docs/pn7160/)
+- [PN7161 Documentation](https://www.elechouse.com/docs/pn7161/)
 
 ## Compatibility
 
