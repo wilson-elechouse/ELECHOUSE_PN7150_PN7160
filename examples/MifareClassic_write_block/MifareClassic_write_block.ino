@@ -61,36 +61,74 @@ bool WriteMifareBlock(unsigned char *writePart1, unsigned char *writePart2,
   return true;
 }
 
+bool AuthenticateMifareBlock(uint8_t sector, unsigned char *resp,
+                             unsigned char *respSize,
+                             uint8_t *selectedKeySelector) {
+  const uint8_t keySelectors[] = {0x10, 0x11};
+
+  for (uint8_t keyIndex = 0; keyIndex < (sizeof(keySelectors) / sizeof(keySelectors[0])); keyIndex++) {
+    unsigned char Auth[] = {0x40, sector, keySelectors[keyIndex], KEY_MFC};
+
+    for (uint8_t attempt = 0; attempt < 3; attempt++) {
+      bool status = nfc.readerTagCmd(Auth, sizeof(Auth), resp, respSize);
+      if ((status != NFC_ERROR) && (*respSize > 0) && (resp[*respSize - 1] == 0)) {
+        if (selectedKeySelector != nullptr) {
+          *selectedKeySelector = keySelectors[keyIndex];
+        }
+        return true;
+      }
+      if ((attempt < 2) && (nfc.readerReActivate() == NFC_SUCCESS)) {
+        delay(30);
+      } else {
+        delay(30);
+      }
+    }
+  }
+
+  return false;
+}
+
+bool ReadMifareBlock(uint8_t sector, unsigned char *readCmd,
+                     unsigned char *resp, unsigned char *respSize,
+                     uint8_t *selectedKeySelector) {
+  bool status;
+
+  if (!AuthenticateMifareBlock(sector, resp, respSize, selectedKeySelector)) {
+    return false;
+  }
+
+  status = nfc.readerTagCmd(readCmd, 3, resp, respSize);
+  if ((status == NFC_ERROR) || (resp[*respSize - 1] != 0)) {
+    return false;
+  }
+
+  return true;
+}
+
 uint8_t PCD_MIFARE_scenario(void) {
   Serial.println("Start reading process...");
-  bool status;
+  delay(100);
   unsigned char Resp[256];
   unsigned char RespSize;
-  /* Authenticate sector 1 with generic keys */
-  unsigned char Auth[] = {0x40, BLK_NB_MFC / 4, 0x10, KEY_MFC};
   /* Read block 4 */
   unsigned char Read[] = {0x10, 0x30, BLK_NB_MFC};
   /* Write block 4 */
   unsigned char WritePart1[] = {0x10, 0xA0, BLK_NB_MFC};
   unsigned char WriteDataPart2[] = {0x10, DATA_WRITE_MFC};
   unsigned char ClearDataPart2[] = {0x10, DATA_CLEAR_MFC};
+  uint8_t selectedKeySelector = 0;
 
   // Determine ChipWriteAck based on chip model
   uint8_t ChipWriteAck = (nfc.getChipModel() == PN7160) ? 0x14 : 0x00;
 
-  /* Authenticate */
-  status = nfc.readerTagCmd(Auth, sizeof(Auth), Resp, &RespSize);
-  if ((status == NFC_ERROR) || (Resp[RespSize - 1] != 0)) {
-    Serial.println("Auth error!");
+  /* Read block */
+  if (!ReadMifareBlock(BLK_NB_MFC / 4, Read, Resp, &RespSize,
+                       &selectedKeySelector)) {
+    Serial.print("Error reading block!");
     return 1;
   }
-
-  /* Read block */
-  status = nfc.readerTagCmd(Read, sizeof(Read), Resp, &RespSize);
-  if ((status == NFC_ERROR) || (Resp[RespSize - 1] != 0)) {
-    Serial.print("Error reading block!");
-    return 2;
-  }
+  Serial.print("Authenticated with Key ");
+  Serial.println((selectedKeySelector & 0x01) ? 'B' : 'A');
   Serial.print("------------------------Sector ");
   Serial.print(BLK_NB_MFC / 4, DEC);
   Serial.println("-------------------------");
@@ -105,14 +143,13 @@ uint8_t PCD_MIFARE_scenario(void) {
   if (!WriteMifareBlock(WritePart1, WriteDataPart2, Resp, &RespSize,
                         ChipWriteAck)) {
     Serial.print("Error writing test pattern!");
-    return 3;
+    return 2;
   }
-
-  /* Read block again to see the changes */
-  status = nfc.readerTagCmd(Read, sizeof(Read), Resp, &RespSize);
-  if ((status == NFC_ERROR) || (Resp[RespSize - 1] != 0)) {
-    Serial.print("Error reading back test pattern!");
-    return 4;
+  delay(80);
+  if (!ReadMifareBlock(BLK_NB_MFC / 4, Read, Resp, &RespSize,
+                       &selectedKeySelector)) {
+    Serial.println("Error reading back test pattern!");
+    return 3;
   }
   Serial.print("------------------------Sector ");
   Serial.print(BLK_NB_MFC / 4, DEC);
@@ -127,13 +164,13 @@ uint8_t PCD_MIFARE_scenario(void) {
   if (!WriteMifareBlock(WritePart1, ClearDataPart2, Resp, &RespSize,
                         ChipWriteAck)) {
     Serial.print("Error clearing block!");
-    return 5;
+    return 4;
   }
-
-  status = nfc.readerTagCmd(Read, sizeof(Read), Resp, &RespSize);
-  if ((status == NFC_ERROR) || (Resp[RespSize - 1] != 0)) {
+  delay(80);
+  if (!ReadMifareBlock(BLK_NB_MFC / 4, Read, Resp, &RespSize,
+                       &selectedKeySelector)) {
     Serial.print("Error reading back cleared block!");
-    return 6;
+    return 5;
   }
   Serial.print("----------------- Cleared Data in Block ");
   Serial.print(BLK_NB_MFC, DEC);
@@ -144,8 +181,7 @@ uint8_t PCD_MIFARE_scenario(void) {
 
 void setup() {
   Serial.begin(PN71XX_SERIAL_BAUD);
-  while (!Serial)
-    ;
+  pn71xxWaitForSerial();
   Serial.println("Write mifare classic data block 4 with PN7150/60");
   pn71xxConfigureExampleTransport(nfc);
 

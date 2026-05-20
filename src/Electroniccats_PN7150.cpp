@@ -46,6 +46,7 @@ Electroniccats_PN7150::Electroniccats_PN7150(uint8_t IRQpin, uint8_t VENpin,
                                              uint8_t I2Caddress,
                                              ChipModel chipModel, TwoWire *wire)
     : _IRQpin(IRQpin), _VENpin(VENpin), _I2Caddress(I2Caddress),
+      _SDApin(NO_PN71XX_I2C_PIN), _SCLpin(NO_PN71XX_I2C_PIN),
       _SSpin(NO_PN71XX_SPI_PIN), _SCKpin(NO_PN71XX_SPI_PIN),
       _MISOpin(NO_PN71XX_SPI_PIN), _MOSIpin(NO_PN71XX_SPI_PIN),
       _chipModel(chipModel), _hostInterface(HostInterface_I2C), _wire(wire),
@@ -64,7 +65,8 @@ Electroniccats_PN7150::Electroniccats_PN7150(uint8_t IRQpin, uint8_t VENpin,
                                              uint8_t MISOpin, uint8_t MOSIpin,
                                              ChipModel chipModel,
                                              SPIClass *spi)
-    : _IRQpin(IRQpin), _VENpin(VENpin), _I2Caddress(0), _SSpin(SSPin),
+    : _IRQpin(IRQpin), _VENpin(VENpin), _I2Caddress(0),
+      _SDApin(NO_PN71XX_I2C_PIN), _SCLpin(NO_PN71XX_I2C_PIN), _SSpin(SSPin),
       _SCKpin(SCKpin), _MISOpin(MISOpin), _MOSIpin(MOSIpin),
       _chipModel(chipModel), _hostInterface(HostInterface_SPI),
       _wire(&Wire), _spi(spi), _tracePort(nullptr),
@@ -412,6 +414,11 @@ void Electroniccats_PN7150::setPn7160FixedVbat3V3(bool enabled) {
   _pn7160FixedVbat3V3 = enabled;
 }
 
+void Electroniccats_PN7150::setI2CPins(uint8_t sdaPin, uint8_t sclPin) {
+  _SDApin = sdaPin;
+  _SCLpin = sclPin;
+}
+
 void Electroniccats_PN7150::hardwareReset() {
   if (_VENpin == 255) {
     return;
@@ -458,10 +465,18 @@ uint8_t Electroniccats_PN7150::connectNCI() {
     tracePrint("[TRACE] connectNCI: SPI initialized");
   } else {
     // Open connection to NXPNCI
-    // uses setSDA and set SCL with compatible boards
-    //_wire->setSDA(0);  // GPIO 0 como SDA
-    //_wire->setSCL(1);  // GPIO 1 como SCL
+    // Configure custom I2C pins on platforms that support them
+#if defined(ARDUINO_ARCH_ESP32)
+    if (_SDApin != NO_PN71XX_I2C_PIN && _SCLpin != NO_PN71XX_I2C_PIN) {
+      _wire->begin(_SDApin, _SCLpin);
+      tracePrint("[TRACE] connectNCI: I2C initialized with custom pins");
+    } else {
+      _wire->begin();
+      tracePrint("[TRACE] connectNCI: I2C initialized with default pins");
+    }
+#else
     _wire->begin();
+#endif
   }
 
   hardwareReset();

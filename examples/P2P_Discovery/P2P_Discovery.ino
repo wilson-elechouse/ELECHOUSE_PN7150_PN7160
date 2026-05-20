@@ -34,7 +34,7 @@ void ResetMode(){                                  //Reset the configuration mod
 
 void setup(){
   Serial.begin(PN71XX_SERIAL_BAUD);
-  while(!Serial);
+  pn71xxWaitForSerial();
   Serial.println("Detect P2P devices with PN7150/60");
   pn71xxConfigureExampleTransport(nfc);
 

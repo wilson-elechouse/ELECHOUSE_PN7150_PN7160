@@ -39,25 +39,74 @@ void PrintBuf(const byte* data, const uint32_t numBytes) {  // Print hex data bu
   Serial.println();
 }
 
+bool AuthenticateMifareBlock(uint8_t sector, unsigned char *resp,
+                             unsigned char *respSize,
+                             uint8_t *selectedKeySelector) {
+  const uint8_t keySelectors[] = {0x10, 0x11};
+
+  for (uint8_t keyIndex = 0; keyIndex < (sizeof(keySelectors) / sizeof(keySelectors[0])); keyIndex++) {
+    unsigned char Auth[] = {0x40, sector, keySelectors[keyIndex], KEY_MFC};
+
+    for (uint8_t attempt = 0; attempt < 3; attempt++) {
+      bool status = nfc.readerTagCmd(Auth, sizeof(Auth), resp, respSize);
+      if ((status != NFC_ERROR) && (*respSize > 0) && (resp[*respSize - 1] == 0)) {
+        if (selectedKeySelector != nullptr) {
+          *selectedKeySelector = keySelectors[keyIndex];
+        }
+        return true;
+      }
+
+      Serial.print("Auth key ");
+      Serial.print((keySelectors[keyIndex] & 0x01) ? 'B' : 'A');
+      Serial.print(" attempt ");
+      Serial.print(attempt + 1);
+      Serial.print(" failed, status=");
+      Serial.print(status);
+      Serial.print(", size=");
+      Serial.print(*respSize);
+      if (*respSize > 0) {
+        Serial.print(", last=0x");
+        Serial.println(resp[*respSize - 1], HEX);
+      } else {
+        Serial.println(", empty");
+      }
+
+      if ((attempt < 2) && (nfc.readerReActivate() == NFC_SUCCESS)) {
+        delay(30);
+      } else {
+        delay(30);
+      }
+    }
+  }
+
+  return false;
+}
+
 void PCD_MIFARE_scenario(void) {
   Serial.println("Start reading process...");
+  delay(100);
   bool status;
   unsigned char Resp[256];
   unsigned char RespSize;
-  /* Authenticate sector 1 with generic keys */
-  unsigned char Auth[] = {0x40, BLK_NB_MFC / 4, 0x10, KEY_MFC};
   /* Read block 4 */
   unsigned char Read[] = {0x10, 0x30, BLK_NB_MFC};
+  uint8_t selectedKeySelector = 0;
 
   /* Authenticate */
-  status = nfc.readerTagCmd(Auth, sizeof(Auth), Resp, &RespSize);
-  if ((status == NFC_ERROR) || (Resp[RespSize - 1] != 0))
+  if (!AuthenticateMifareBlock(BLK_NB_MFC / 4, Resp, &RespSize,
+                               &selectedKeySelector)) {
     Serial.println("Auth error!");
+    return;
+  }
+  Serial.print("Authenticated with Key ");
+  Serial.println((selectedKeySelector & 0x01) ? 'B' : 'A');
 
   /* Read block */
   status = nfc.readerTagCmd(Read, sizeof(Read), Resp, &RespSize);
-  if ((status == NFC_ERROR) || (Resp[RespSize - 1] != 0))
-    Serial.print("Error reading sector!");
+  if ((status == NFC_ERROR) || (Resp[RespSize - 1] != 0)) {
+    Serial.println("Error reading sector!");
+    return;
+  }
 
   Serial.print("------------------------Sector ");
   Serial.print(BLK_NB_MFC / 4, DEC);
@@ -68,8 +117,7 @@ void PCD_MIFARE_scenario(void) {
 
 void setup() {
   Serial.begin(PN71XX_SERIAL_BAUD);
-  while (!Serial)
-    ;
+  pn71xxWaitForSerial();
   Serial.println("Read mifare classic data block 4 with PN7150/60");
   pn71xxConfigureExampleTransport(nfc);
 

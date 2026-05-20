@@ -59,6 +59,28 @@ inline void pn71xxConfigureExampleTransport(Electroniccats_PN7150 &nfc) {
 
 #else
 
+#if defined(ARDUINO_ESP32C3_DEV) || defined(CONFIG_IDF_TARGET_ESP32C3)
+
+#ifndef PN71XX_I2C_SDA
+#define PN71XX_I2C_SDA 4
+#endif
+
+#ifndef PN71XX_I2C_SCL
+#define PN71XX_I2C_SCL 5
+#endif
+
+#ifndef PN71XX_I2C_IRQ
+#define PN71XX_I2C_IRQ 6
+#endif
+
+#ifndef PN71XX_I2C_VEN
+#define PN71XX_I2C_VEN 7
+#endif
+
+#define PN71XX_SERIAL_BAUD 115200
+
+#else
+
 #ifndef PN71XX_I2C_IRQ
 #define PN71XX_I2C_IRQ 11
 #endif
@@ -72,15 +94,37 @@ inline void pn71xxConfigureExampleTransport(Electroniccats_PN7150 &nfc) {
 #endif
 
 #define PN71XX_SERIAL_BAUD 9600
+
+#endif
+
+#ifndef PN71XX_I2C_ADDR
+#define PN71XX_I2C_ADDR 0x28
+#endif
+
+#ifndef PN71XX_I2C_CHIP_MODEL
+#define PN71XX_I2C_CHIP_MODEL PN7160
+#endif
+
 #define PN71XX_NFC_INSTANCE(name)                                             \
   Electroniccats_PN7150 name(PN71XX_I2C_IRQ, PN71XX_I2C_VEN, PN71XX_I2C_ADDR, \
-                             PN7150)
+                             PN71XX_I2C_CHIP_MODEL)
 
 inline void pn71xxConfigureExampleTransport(Electroniccats_PN7150 &nfc) {
+#if defined(ARDUINO_ESP32C3_DEV) || defined(CONFIG_IDF_TARGET_ESP32C3)
+  nfc.setI2CPins(PN71XX_I2C_SDA, PN71XX_I2C_SCL);
+#else
   (void)nfc;
+#endif
 }
 
 #endif
+
+inline void pn71xxWaitForSerial(unsigned long timeoutMs = 2000) {
+  unsigned long start = millis();
+  while (!Serial && ((millis() - start) < timeoutMs)) {
+    delay(10);
+  }
+}
 
 inline uint8_t pn71xxInitializeDiscoveryMode(Electroniccats_PN7150 &nfc,
                                              uint8_t mode = 1) {

@@ -26,8 +26,7 @@ PN71XX_NFC_INSTANCE(nfc); // switch transport with PN71XX_USE_SPI
 
 void setup() {
   Serial.begin(PN71XX_SERIAL_BAUD);
-  while (!Serial)
-    ;
+  pn71xxWaitForSerial();
   Serial.println("Write ISO15693 data block 8 with PN7150/60");
   pn71xxConfigureExampleTransport(nfc);
 

@@ -36,8 +36,10 @@ void displayCardInfo();
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial)
-    ;
+  unsigned long serialWaitStart = millis();
+  while (!Serial && ((millis() - serialWaitStart) < 2000)) {
+    delay(10);
+  }
 
   Serial.println("Detect NFC tags with PN7161 over SPI");
 

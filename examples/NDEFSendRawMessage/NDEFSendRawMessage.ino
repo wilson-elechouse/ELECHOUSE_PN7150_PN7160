@@ -53,8 +53,7 @@ const char ndefMessage[] = {0x91,                                               
 
 void setup() {
   Serial.begin(PN71XX_SERIAL_BAUD);
-  while (!Serial)
-    ;
+  pn71xxWaitForSerial();
   Serial.println("Send NDEF Message with PN7150/60");
   pn71xxConfigureExampleTransport(nfc);
 

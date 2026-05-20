@@ -39,6 +39,7 @@
 
 #define NO_PN7150_RESET_PIN 255
 #define NO_PN71XX_SPI_PIN 255
+#define NO_PN71XX_I2C_PIN 255
 #define PN71XX_SPI_CLOCK_HZ 1000000UL
 #define PN71XX_SPI_WRITE_TDD 0x7F
 #define PN71XX_SPI_READ_TDD 0xFF
@@ -108,6 +109,7 @@ private:
   uint8_t _rfDiscoveryId;
   uint8_t _nextRfDiscoveryId;
   uint8_t _IRQpin, _VENpin, _I2Caddress;
+  uint8_t _SDApin, _SCLpin;
   uint8_t _SSpin, _SCKpin, _MISOpin, _MOSIpin;
   ChipModel _chipModel;
   HostInterface _hostInterface;
@@ -167,6 +169,7 @@ public:
   void setTracePort(Stream *stream);
   void setVerboseTrace(bool enabled = true);
   void setPn7160FixedVbat3V3(bool enabled = true);
+  void setI2CPins(uint8_t sdaPin, uint8_t sclPin);
   uint8_t connectNCI();
   uint8_t
   ConfigMode(uint8_t modeSE); // Deprecated, use configMode(void) instead

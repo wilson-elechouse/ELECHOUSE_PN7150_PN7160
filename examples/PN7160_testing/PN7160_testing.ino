@@ -11,11 +11,27 @@
 
 #include "Electroniccats_PN7150.h"
 
+#if defined(ARDUINO_ESP32C3_DEV) || defined(CONFIG_IDF_TARGET_ESP32C3)
+#define PN7160_SDA (4)
+#define PN7160_SCL (5)
+#define PN7160_IRQ (6)
+#define PN7160_VEN (7)
+#define PN7160_FIXED_VBAT_3V3 (0)
+#else
+#define PN7160_SDA (21)
+#define PN7160_SCL (22)
 #define PN7160_IRQ (14)
 #define PN7160_VEN (13)
-#define PN7160_ADDR (0x28)
 #define PN7160_FIXED_VBAT_3V3 (1)
-#define LED_PIN (2)
+#endif
+
+#define PN7160_ADDR (0x28)
+
+#if defined(LED_BUILTIN)
+#define LED_PIN (LED_BUILTIN)
+#else
+#define LED_PIN (-1)
+#endif
 
 Electroniccats_PN7150 nfc(PN7160_IRQ, PN7160_VEN, PN7160_ADDR, PN7160);
 
@@ -29,6 +45,7 @@ void blinkTask(void* pvParameters) {
   const int blinkDelay = 167;
 
   while (true) {
+#if LED_PIN >= 0
     if (tagPresent) {
       digitalWrite(LED_PIN, HIGH);
       vTaskDelay(blinkDelay / portTICK_PERIOD_MS);
@@ -38,17 +55,32 @@ void blinkTask(void* pvParameters) {
       digitalWrite(LED_PIN, LOW);
       vTaskDelay(10 / portTICK_PERIOD_MS);
     }
+#else
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+#endif
   }
 }
 #endif
 
 void setup() {
-  Serial.begin(9600);
-  while (!Serial)
-    ;
+  Serial.begin(115200);
+  unsigned long serialWaitStart = millis();
+  while (!Serial && ((millis() - serialWaitStart) < 2000)) {
+    delay(10);
+  }
 
   Serial.println("Detect NFC tags with PN7160");
+  Serial.print("I2C SDA=");
+  Serial.print(PN7160_SDA);
+  Serial.print(", SCL=");
+  Serial.print(PN7160_SCL);
+  Serial.print(", IRQ=");
+  Serial.print(PN7160_IRQ);
+  Serial.print(", VEN=");
+  Serial.println(PN7160_VEN);
   Serial.println("Initializing...");
+
+  nfc.setI2CPins(PN7160_SDA, PN7160_SCL);
 
   if (nfc.connectNCI()) {
     Serial.println("Error while setting up the mode, check connections!");
@@ -76,8 +108,10 @@ void setup() {
   nfc.startDiscovery();
   Serial.println("Waiting for a card...");
 
+#if LED_PIN >= 0
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
+#endif
 
 #if defined(ARDUINO_ARCH_ESP32)
   TaskHandle_t blinkTaskHandle;
@@ -101,7 +135,9 @@ void loop() {
     Serial.println("Card removed!");
 
     tagPresent = false;
+#if LED_PIN >= 0
     digitalWrite(LED_PIN, LOW);
+#endif
   }
 
   Serial.println("Restarting...");

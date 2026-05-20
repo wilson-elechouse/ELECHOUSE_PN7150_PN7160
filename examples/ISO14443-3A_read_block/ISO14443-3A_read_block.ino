@@ -60,8 +60,7 @@ void PCD_ISO14443_3A_scenario(void) {
 
 void setup() {
   Serial.begin(PN71XX_SERIAL_BAUD);
-  while (!Serial)
-    ;
+  pn71xxWaitForSerial();
   Serial.println("Read ISO14443-3A(T2T) data block 5 with PN7150/60");
   pn71xxConfigureExampleTransport(nfc);
 
