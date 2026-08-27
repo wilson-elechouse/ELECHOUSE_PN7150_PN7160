@@ -17,6 +17,10 @@
 
 #include "Electroniccats_PN7150.h"
 
+namespace {
+constexpr uint16_t NCI_EEPROM_CONFIG_TIMEOUT_MS = 100;
+}
+
 uint8_t gNextTag_Protocol = PROT_UNDETERMINED;
 
 uint8_t NCIStartDiscovery_length = 0;
@@ -864,10 +868,6 @@ bool Electroniccats_PN7150::configureSettings(void) {
 
   bool gRfSettingsRestored_flag = false;
 
-#if (NXP_TVDD_CONF | NXP_RF_CONF)
-  uint8_t *NxpNci_CONF;
-  uint16_t NxpNci_CONF_size = 0;
-#endif
 #if (NXP_CORE_CONF_EXTN | NXP_CLK_CONF | NXP_TVDD_CONF | NXP_RF_CONF)
   uint8_t currentTS[32] = __TIMESTAMP__;
   uint8_t NCIReadTS[] = {0x20, 0x03, 0x03, 0x01, 0xA0, 0x14};
@@ -981,7 +981,7 @@ bool Electroniccats_PN7150::configureSettings(void) {
 #endif
 
 #if NXP_TVDD_CONF
-  if (NxpNci_CONF_size != 0) {
+  {
     tracePrint("[TRACE] configureSettings: TVDD_CONF");
     if (_chipModel == PN7150)
       (void)writeData(NxpNci_TVDD_CONF_2ndGen, sizeof(NxpNci_TVDD_CONF_2ndGen));
@@ -990,11 +990,11 @@ bool Electroniccats_PN7150::configureSettings(void) {
                       sizeof(NxpNci_TVDD_CONF_3rdGen_Fixed3V3));
     else if (_chipModel == PN7160)
       (void)writeData(NxpNci_TVDD_CONF_3rdGen, sizeof(NxpNci_TVDD_CONF_3rdGen));
-    getMessage(10);
+    getMessage(NCI_EEPROM_CONFIG_TIMEOUT_MS);
     if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x02) ||
         (rxBuffer[3] != 0x00) || (rxBuffer[4] != 0x00)) {
 #ifdef DEBUG
-      Serial.println("NxpNci_CONF_size");
+      Serial.println("NxpNci_TVDD_CONF");
 #endif
       return ERROR;
     }
@@ -1002,7 +1002,7 @@ bool Electroniccats_PN7150::configureSettings(void) {
 #endif
 
 #if NXP_RF_CONF
-  if (NxpNci_CONF_size != 0) {
+  {
     tracePrint("[TRACE] configureSettings: RF_CONF");
 
     if (_chipModel == PN7150)
@@ -1010,11 +1010,11 @@ bool Electroniccats_PN7150::configureSettings(void) {
     else if (_chipModel == PN7160)
       (void)writeData(NxpNci_RF_CONF_3rdGen, sizeof(NxpNci_RF_CONF_3rdGen));
 
-    getMessage(10);
+    getMessage(NCI_EEPROM_CONFIG_TIMEOUT_MS);
     if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x02) ||
         (rxBuffer[3] != 0x00) || (rxBuffer[4] != 0x00)) {
 #ifdef DEBUG
-      Serial.println("NxpNci_CONF_size");
+      Serial.println("NxpNci_RF_CONF");
 #endif
       return ERROR;
     }
@@ -1280,10 +1280,6 @@ bool Electroniccats_PN7150::configureSettings(uint8_t *uidcf, uint8_t uidlen) {
 
   bool gRfSettingsRestored_flag = false;
 
-#if (NXP_TVDD_CONF | NXP_RF_CONF)
-  uint8_t *NxpNci_CONF;
-  uint16_t NxpNci_CONF_size = 0;
-#endif
 #if (NXP_CORE_CONF_EXTN | NXP_CLK_CONF | NXP_TVDD_CONF | NXP_RF_CONF)
   uint8_t currentTS[32] = __TIMESTAMP__;
   uint8_t NCIReadTS[] = {0x20, 0x03, 0x03, 0x01, 0xA0, 0x14};
@@ -1396,7 +1392,7 @@ bool Electroniccats_PN7150::configureSettings(uint8_t *uidcf, uint8_t uidlen) {
 #endif
 
 #if NXP_TVDD_CONF
-  if (NxpNci_CONF_size != 0) {
+  {
     if (_chipModel == PN7150)
       (void)writeData(NxpNci_TVDD_CONF_2ndGen, sizeof(NxpNci_TVDD_CONF_2ndGen));
     else if (_chipModel == PN7160 && _pn7160FixedVbat3V3)
@@ -1404,11 +1400,11 @@ bool Electroniccats_PN7150::configureSettings(uint8_t *uidcf, uint8_t uidlen) {
                       sizeof(NxpNci_TVDD_CONF_3rdGen_Fixed3V3));
     else if (_chipModel == PN7160)
       (void)writeData(NxpNci_TVDD_CONF_3rdGen, sizeof(NxpNci_TVDD_CONF_3rdGen));
-    getMessage(10);
+    getMessage(NCI_EEPROM_CONFIG_TIMEOUT_MS);
     if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x02) ||
         (rxBuffer[3] != 0x00) || (rxBuffer[4] != 0x00)) {
 #ifdef DEBUG
-      Serial.println("NxpNci_CONF_size");
+      Serial.println("NxpNci_TVDD_CONF");
 #endif
       return ERROR;
     }
@@ -1416,18 +1412,18 @@ bool Electroniccats_PN7150::configureSettings(uint8_t *uidcf, uint8_t uidlen) {
 #endif
 
 #if NXP_RF_CONF
-  if (NxpNci_CONF_size != 0) {
+  {
 
     if (_chipModel == PN7150)
       (void)writeData(NxpNci_RF_CONF_2ndGen, sizeof(NxpNci_RF_CONF_2ndGen));
     else if (_chipModel == PN7160)
       (void)writeData(NxpNci_RF_CONF_3rdGen, sizeof(NxpNci_RF_CONF_3rdGen));
 
-    getMessage(10);
+    getMessage(NCI_EEPROM_CONFIG_TIMEOUT_MS);
     if ((rxBuffer[0] != 0x40) || (rxBuffer[1] != 0x02) ||
         (rxBuffer[3] != 0x00) || (rxBuffer[4] != 0x00)) {
 #ifdef DEBUG
-      Serial.println("NxpNci_CONF_size");
+      Serial.println("NxpNci_RF_CONF");
 #endif
       return ERROR;
     }

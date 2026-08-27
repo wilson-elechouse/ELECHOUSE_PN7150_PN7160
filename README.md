@@ -101,13 +101,45 @@ For ELECHOUSE PN7160 or PN7161 modules, the initialization should look like this
 Electroniccats_PN7150 nfc(PN7160_IRQ, PN7160_VEN, PN7160_ADDR, PN7160);
 ```
 
-### 4. Upload and test
+### 4. Configure PN7160 for a 3.3 V VBAT/VDD(UP) rail
+
+When `VBAT` and `VDD(UP)` are tied together and powered from the same stable
+3.3 V rail, enable the PN7160 fixed-3.3 V PMU/TXLDO preset after
+`connectNCI()` and before `configureSettings()`:
+
+```cpp
+if (nfc.connectNCI()) {
+  // Handle connection failure.
+}
+
+nfc.setPn7160FixedVbat3V3(true);
+
+if (nfc.configureSettings()) {
+  // Handle configuration failure.
+}
+```
+
+This setting is for the `PN7160` compatibility path, including PN7161. Leave
+it disabled when the RF supply uses the library's normal external-5 V
+configuration. `VDD(PAD)` must still match the host I/O voltage and remain
+within the PN7160 data-sheet limits.
+
+For the shared examples, define this before including the library headers:
+
+```cpp
+#define PN71XX_FIXED_VBAT_3V3 1
+```
+
+See the [PN7160 hardware design guide](https://www.nxp.com/docs/en/application-note/AN12988.pdf)
+for the supported supply configurations and PMU/TXLDO requirements.
+
+### 5. Upload and test
 
 - Open the serial monitor
 - Bring an NFC tag close to the module antenna
 - Use the included examples to read UID, read/write NDEF, or access MIFARE/ISO15693 blocks
 
-### 5. Use the examples over SPI
+### 6. Use the examples over SPI
 
 For the ELECHOUSE **PN7161 MINI V1 SPI** board, the shared examples now support a transport switch:
 

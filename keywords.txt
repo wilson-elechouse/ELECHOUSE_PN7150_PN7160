@@ -33,6 +33,7 @@ configMode	KEYWORD2
 ConfigMode	KEYWORD2
 configureSettings	KEYWORD2
 ConfigureSettings	KEYWORD2
+setPn7160FixedVbat3V3	KEYWORD2
 startDiscovery	KEYWORD2
 StartDiscovery	KEYWORD2
 stopDiscovery	KEYWORD2

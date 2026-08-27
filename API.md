@@ -285,6 +285,32 @@ switch (nfc.getMode()) {
 }
 ```
 
+### Method: `setPn7160FixedVbat3V3`
+
+Enable or disable the fixed-3.3 V power preset for the PN7160-compatible code
+path. Call this after `connectNCI()` and before `configureSettings()`.
+
+```cpp
+void setPn7160FixedVbat3V3(bool enabled = true);
+```
+
+#### Example
+
+```cpp
+if (!nfc.connectNCI()) {
+  nfc.setPn7160FixedVbat3V3(true);
+
+  if (nfc.configureSettings()) {
+    Serial.println("PN7160 3.3 V configuration failed");
+  }
+}
+```
+
+Use this preset when `VBAT` and `VDD(UP)` are directly connected to the same
+stable 3.3 V supply. Leave it disabled for the normal external-5 V RF supply
+configuration. The setting is applied when `configureSettings()` writes the
+PN7160 TVDD/PMU parameters.
+
 ### Method: `configureSettings`
 
 Configure some aspects of the NFC controller, such as the hardware configuration, RF (radio frequency) configuration, and other settings.

@@ -43,6 +43,10 @@ enum Pn71xxExampleInitStatus : uint8_t {
 #define PN71XX_SPI_FIXED_VBAT_3V3 1
 #endif
 
+#ifndef PN71XX_FIXED_VBAT_3V3
+#define PN71XX_FIXED_VBAT_3V3 PN71XX_SPI_FIXED_VBAT_3V3
+#endif
+
 #define PN71XX_SERIAL_BAUD 115200
 #define PN71XX_NFC_INSTANCE(name)                                             \
   Electroniccats_PN7150 name(PN71XX_SPI_IRQ, PN71XX_SPI_VEN, PN71XX_SPI_SS,   \
@@ -50,7 +54,7 @@ enum Pn71xxExampleInitStatus : uint8_t {
                              PN7160, &SPI)
 
 inline void pn71xxConfigureExampleTransport(Electroniccats_PN7150 &nfc) {
-#if PN71XX_SPI_FIXED_VBAT_3V3
+#if PN71XX_FIXED_VBAT_3V3
   nfc.setPn7160FixedVbat3V3(true);
 #else
   (void)nfc;
@@ -105,15 +109,21 @@ inline void pn71xxConfigureExampleTransport(Electroniccats_PN7150 &nfc) {
 #define PN71XX_I2C_CHIP_MODEL PN7160
 #endif
 
+#ifndef PN71XX_FIXED_VBAT_3V3
+#define PN71XX_FIXED_VBAT_3V3 0
+#endif
+
 #define PN71XX_NFC_INSTANCE(name)                                             \
   Electroniccats_PN7150 name(PN71XX_I2C_IRQ, PN71XX_I2C_VEN, PN71XX_I2C_ADDR, \
                              PN71XX_I2C_CHIP_MODEL)
 
 inline void pn71xxConfigureExampleTransport(Electroniccats_PN7150 &nfc) {
+  (void)nfc;
 #if defined(ARDUINO_ESP32C3_DEV) || defined(CONFIG_IDF_TARGET_ESP32C3)
   nfc.setI2CPins(PN71XX_I2C_SDA, PN71XX_I2C_SCL);
-#else
-  (void)nfc;
+#endif
+#if PN71XX_FIXED_VBAT_3V3
+  nfc.setPn7160FixedVbat3V3(true);
 #endif
 }
 
