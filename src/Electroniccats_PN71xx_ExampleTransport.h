@@ -83,6 +83,26 @@ inline void pn71xxConfigureExampleTransport(Electroniccats_PN7150 &nfc) {
 
 #define PN71XX_SERIAL_BAUD 115200
 
+#elif defined(ARDUINO_ESP32S3_DEV) || defined(CONFIG_IDF_TARGET_ESP32S3)
+
+#ifndef PN71XX_I2C_SDA
+#define PN71XX_I2C_SDA 8
+#endif
+
+#ifndef PN71XX_I2C_SCL
+#define PN71XX_I2C_SCL 9
+#endif
+
+#ifndef PN71XX_I2C_IRQ
+#define PN71XX_I2C_IRQ 11
+#endif
+
+#ifndef PN71XX_I2C_VEN
+#define PN71XX_I2C_VEN 13
+#endif
+
+#define PN71XX_SERIAL_BAUD 115200
+
 #else
 
 #ifndef PN71XX_I2C_IRQ
@@ -119,7 +139,7 @@ inline void pn71xxConfigureExampleTransport(Electroniccats_PN7150 &nfc) {
 
 inline void pn71xxConfigureExampleTransport(Electroniccats_PN7150 &nfc) {
   (void)nfc;
-#if defined(ARDUINO_ESP32C3_DEV) || defined(CONFIG_IDF_TARGET_ESP32C3)
+#if defined(PN71XX_I2C_SDA) && defined(PN71XX_I2C_SCL)
   nfc.setI2CPins(PN71XX_I2C_SDA, PN71XX_I2C_SCL);
 #endif
 #if PN71XX_FIXED_VBAT_3V3
