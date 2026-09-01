@@ -1959,14 +1959,18 @@ void Electroniccats_PN7150::presenceCheck(RfIntf_t RfIntf) {
   bool status;
   uint8_t i;
   uint8_t idx = 0;
+  uint8_t iso15693PresenceMisses = 0;
 
   uint8_t NCIPresCheckT1T[] = {0x00, 0x00, 0x07, 0x78, 0x00,
                                0x00, 0x00, 0x00, 0x00, 0x00};
   uint8_t NCIPresCheckT2T[] = {0x00, 0x00, 0x02, 0x30, 0x00};
   uint8_t NCIPresCheckT3T[] = {0x21, 0x08, 0x04, 0xFF, 0xFF, 0x00, 0x01};
   uint8_t NCIPresCheckIsoDep[] = {0x2F, 0x11, 0x00};
-  uint8_t NCIPresCheckIso15693[] = {0x00, 0x00, 0x0B, 0x26, 0x01, 0x40, 0x00,
-                                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  // Addressed Get System Information: flags, command and the 8-byte UID.
+  // This is reliable while an ISO15693 tag is already activated, unlike
+  // issuing another Inventory command from the active RF interface.
+  uint8_t NCIPresCheckIso15693[] = {0x00, 0x00, 0x0A, 0x22, 0x2B, 0x00, 0x00,
+                                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
   uint8_t NCIDeactivate[] = {0x21, 0x06, 0x01, 0x01};
   uint8_t NCISelectMIFARE[] = {0x21, 0x04, 0x03, 0x01, 0x80, 0x80};
 
@@ -2014,16 +2018,41 @@ void Electroniccats_PN7150::presenceCheck(RfIntf_t RfIntf) {
     do {
       delay(500);
       for (i = 0; i < 8; i++) {
-        NCIPresCheckIso15693[i + 6] = remoteDevice.getID()[7 - i];
+        NCIPresCheckIso15693[i + 5] = remoteDevice.getID()[7 - i];
       }
       (void)writeData(NCIPresCheckIso15693, sizeof(NCIPresCheckIso15693));
-      getMessage();
-      getMessage(100);
+
+      // A tag response can arrive before or after CORE_CONN_CREDITS_NTF.
+      // Keep the first data packet instead of unconditionally overwriting it
+      // with a second, possibly timed-out, getMessage() call.
+      getMessage(500);
+      if ((rxMessageLength >= 2) && (rxBuffer[0] == 0x60) &&
+          (rxBuffer[1] == 0x06)) {
+        getMessage(500);
+      }
+
       status = ERROR;
-      if (rxMessageLength)
-        status = SUCCESS;
-    } while ((status == SUCCESS) && (rxBuffer[0] == 0x00) &&
-             (rxBuffer[1] == 0x00) && (rxBuffer[rxMessageLength - 1] == 0x00));
+      if ((rxMessageLength >= 13) && (rxBuffer[0] == 0x00) &&
+          (rxBuffer[1] == 0x00) && (rxBuffer[2] >= 0x0A) &&
+          ((rxBuffer[3] & 0x01) == 0x00)) {
+        bool uidMatches = true;
+        for (i = 0; i < 8; i++) {
+          if (rxBuffer[i + 5] != remoteDevice.getID()[7 - i]) {
+            uidMatches = false;
+            break;
+          }
+        }
+        if (uidMatches) {
+          status = SUCCESS;
+        }
+      }
+
+      if (status == SUCCESS) {
+        iso15693PresenceMisses = 0;
+      } else {
+        iso15693PresenceMisses++;
+      }
+    } while ((status == SUCCESS) || (iso15693PresenceMisses < 3));
     break;
 
   case PROT_MIFARE:
